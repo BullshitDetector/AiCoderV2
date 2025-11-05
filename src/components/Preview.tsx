@@ -18,7 +18,7 @@ const Preview: React.FC = () => {
       <div className="bg-gray-800 text-white px-3 py-1.5 text-xs flex items-center justify-between border-b border-gray-700">
         <span className="font-medium">Preview</span>
         <button
-          onClick={restart}
+          onClick={startContainer}
           className="flex items-center gap-1 px-2 py-0.5 bg-blue-600 hover:bg-blue-700 rounded text-xs transition-colors"
           title="Restart WebContainer"
         >
