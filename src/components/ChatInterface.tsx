@@ -1,285 +1,257 @@
+// src/components/ChatInterface.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, Settings, ChevronDown, Check } from 'lucide-react';
-import { ChatMessage } from '../types';
-import { aiService } from '../services/aiService';
+import { Send, Loader2, Copy, Trash2, Bot, User } from 'lucide-react';
+import { generateCode, AVAILABLE_MODELS } from '../services/aiService';
+import { useFileTree } from '../hooks/useFileTree';
 
-interface ChatInterfaceProps {
-  onCodeGenerated: (path: string, content: string) => void;
-}
-
-interface APIConfig {
+interface Message {
   id: string;
-  name: string;
-  provider: 'openai' | 'claude' | 'xai' | 'gemini' | 'custom';
-  enabled: boolean;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onCodeGenerated }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      type: 'assistant',
-      content: 'Welcome to R3alm Dev! I\'m your AI development assistant. Try asking me to create a "Hello World" component or any other React component you need.',
-      timestamp: new Date()
-    }
-  ]);
+export default function ChatInterface() {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [showApiDropdown, setShowApiDropdown] = useState(false);
-  const [activeApiId, setActiveApiId] = useState<string>('demo');
+  const [loading, setLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('grok-4');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Mock API configurations - in production, this would come from settings
-  const [apiConfigs] = useState<APIConfig[]>([
-    { id: 'demo', name: 'Demo AI (Built-in)', provider: 'custom', enabled: true },
-    { id: 'openai', name: 'OpenAI GPT-4', provider: 'openai', enabled: false },
-    { id: 'claude', name: 'Claude 3.5 Sonnet', provider: 'claude', enabled: false },
-    { id: 'xai', name: 'xAI Grok', provider: 'xai', enabled: false },
-    { id: 'gemini', name: 'Google Gemini', provider: 'gemini', enabled: false }
-  ]);
+  const { addFile, selectFile } = useFileTree();
 
-  const activeApi = apiConfigs.find(api => api.id === activeApiId);
-  const enabledApis = apiConfigs.filter(api => api.enabled);
-
-  const getProviderColor = (provider: string) => {
-    switch (provider) {
-      case 'openai': return 'bg-green-500';
-      case 'claude': return 'bg-orange-500';
-      case 'xai': return 'bg-purple-500';
-      case 'gemini': return 'bg-blue-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // Auto-scroll to bottom
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  // Focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
-    const userMessage: ChatMessage = {
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+
+    const userMessage: Message = {
       id: Date.now().toString(),
-      type: 'user',
-      content: input,
-      timestamp: new Date()
+      role: 'user',
+      content: input.trim(),
+      timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInput('');
-    setIsLoading(true);
+    setLoading(true);
 
     try {
-      const response = await aiService.generateCode(input);
-      
-      // Add generated files
-      {showApiDropdown && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowApiDropdown(false)}
-        />
-      )}
-      Object.entries(response.files).forEach(([path, content]) => {
-        onCodeGenerated(path, content);
-      });
+      const code = await generateCode(input.trim(), { model: selectedModel });
 
-      const assistantMessage: ChatMessage = {
+      const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: response.instructions,
-        timestamp: new Date()
+        role: 'assistant',
+        content: code,
+        timestamp: new Date(),
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      const errorMessage: ChatMessage = {
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Auto-create file from AI response
+      const fileName = extractFileName(input.trim()) || 'Component.tsx';
+      addFile(fileName, code);
+      selectFile(fileName);
+
+    } catch (error: any) {
+      const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: 'Sorry, I encountered an error while generating code. Please try again.',
-        timestamp: new Date()
+        role: 'assistant',
+        content: `Error: ${error.message}`,
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
+  const copyToClipboard = (content: string) => {
+    navigator.clipboard.writeText(content);
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+  };
+
   return (
-    <div className="h-full flex flex-col bg-gray-800">
+    <div className="flex flex-col h-full bg-gray-900 text-gray-100">
       {/* Header */}
-      <div className="border-b border-gray-700 p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Bot className="w-5 h-5 text-blue-400" />
-            <h2 className="text-lg font-semibold text-white">AI Assistant</h2>
-            <Sparkles className="w-4 h-4 text-purple-400" />
-          </div>
-          
-          {/* Settings Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowApiDropdown(!showApiDropdown)}
-              className="flex items-center space-x-1 text-gray-400 hover:text-white p-1 rounded-md transition-colors"
-              title="AI API Settings"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-            
-            {showApiDropdown && (
-              <div className="absolute right-0 top-8 w-64 bg-gray-700 rounded-md shadow-lg border border-gray-600 z-50">
-                <div className="p-3 border-b border-gray-600">
-                  <h3 className="text-sm font-semibold text-white mb-1">Active AI API</h3>
-                  <div className="flex items-center space-x-2">
-                    <div className={`w-2 h-2 rounded-full ${getProviderColor(activeApi?.provider || 'custom')}`}></div>
-                    <span className="text-sm text-gray-300">{activeApi?.name || 'No API Selected'}</span>
-                  </div>
-                </div>
-                
-                <div className="py-1 max-h-48 overflow-y-auto">
-                  {enabledApis.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-gray-400">
-                      No APIs configured. Go to Settings to add APIs.
-                    </div>
-                  ) : (
-                    enabledApis.map((api) => (
-                      <button
-                        key={api.id}
-                        onClick={() => {
-                          setActiveApiId(api.id);
-                          setShowApiDropdown(false);
-                        }}
-                        className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-300 hover:bg-gray-600 hover:text-white transition-colors"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <div className={`w-2 h-2 rounded-full ${getProviderColor(api.provider)}`}></div>
-                          <span>{api.name}</span>
-                        </div>
-                        {activeApiId === api.id && (
-                          <Check className="w-3 h-3 text-blue-400" />
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-                
-                {enabledApis.length > 0 && (
-                  <div className="border-t border-gray-600 p-2">
-                    <div className="text-xs text-gray-400">
-                      {enabledApis.length} API{enabledApis.length !== 1 ? 's' : ''} available
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+      <div className="border-b border-gray-700 p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Bot className="w-6 h-6 text-blue-400" />
+          <h2 className="text-lg font-semibold">AI Assistant</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            disabled={loading}
+            className="px-3 py-1.5 bg-gray-800 text-white text-sm rounded-md border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {AVAILABLE_MODELS.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={clearChat}
+            className="p-2 text-gray-400 hover:text-white transition-colors"
+            title="Clear chat"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message) => (
+        {messages.length === 0 && (
+          <div className="text-center text-gray-500 mt-10">
+            <Bot className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+            <p className="text-sm">Ask me to generate a component, fix code, or explain anything.</p>
+            <p className="text-xs mt-2">Try: "Create a dark mode toggle with Tailwind"</p>
+          </div>
+        )}
+
+        {messages.map((msg) => (
           <div
-            key={message.id}
-            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            key={msg.id}
+            className={`flex gap-3 ${
+              msg.role === 'user' ? 'justify-end' : 'justify-start'
+            }`}
           >
-            <div className={`flex max-w-[80%] ${message.type === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                message.type === 'user' 
-                  ? 'bg-blue-500 ml-2' 
-                  : 'bg-purple-500 mr-2'
-              }`}>
-                {message.type === 'user' ? (
-                  <User className="w-4 h-4 text-white" />
-                ) : (
-                  <Bot className="w-4 h-4 text-white" />
-                )}
+            {msg.role === 'assistant' && (
+              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                <Bot className="w-5 h-5 text-white" />
               </div>
-              <div className={`px-4 py-3 rounded-lg ${
-                message.type === 'user'
+            )}
+            <div
+              className={`max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl p-3 rounded-lg ${
+                msg.role === 'user'
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-100'
-              }`}>
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                <div className="text-xs opacity-70 mt-1">
-                  {message.timestamp.toLocaleTimeString()}
-                </div>
-              </div>
+                  : 'bg-gray-800 text-gray-100'
+              }`}
+            >
+              <p className="text-sm whitespace-pre-wrap font-mono text-xs md:text-sm">
+                {msg.role === 'assistant' && msg.content.startsWith('Error:') ? (
+                  <span className="text-red-400">{msg.content}</span>
+                ) : (
+                  msg.content
+                )}
+              </p>
+              {msg.role === 'assistant' && !msg.content.startsWith('Error:') && (
+                <button
+                  onClick={() => copyToClipboard(msg.content)}
+                  className="mt-2 flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  <Copy className="w-3 h-3" />
+                  Copy code
+                </button>
+              )}
             </div>
+            {msg.role === 'user' && (
+              <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0">
+                <User className="w-5 h-5 text-white" />
+              </div>
+            )}
           </div>
         ))}
-        
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="flex items-center">
-              <div className="w-8 h-8 rounded-full bg-purple-500 mr-2 flex items-center justify-center">
-                <Bot className="w-4 h-4 text-white" />
-              </div>
-              <div className="bg-gray-700 px-4 py-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                  <span className="text-sm text-gray-300">Generating code...</span>
-                </div>
-              </div>
+
+        {loading && (
+          <div className="flex gap-3 justify-start">
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
+              <Bot className="w-5 h-5 text-white" />
+            </div>
+            <div className="bg-gray-800 p-3 rounded-lg">
+              <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
             </div>
           </div>
         )}
-        
+
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
       <div className="border-t border-gray-700 p-4">
-        <div className="flex space-x-2">
+        <div className="flex gap-2">
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Describe what you want to build..."
-            className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            rows={2}
-            disabled={isLoading}
+            onKeyDown={handleKeyDown}
+            placeholder="Describe the component you want..."
+            disabled={loading}
+            rows={1}
+            className="flex-1 px-4 py-2 bg-gray-800 text-white placeholder-gray-500 border border-gray-700 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <button
             onClick={handleSend}
-            disabled={isLoading || !input.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white p-2 rounded-lg transition-colors"
+            disabled={loading || !input.trim()}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-md transition-colors flex items-center gap-2"
           >
-            <Send className="w-5 h-5" />
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+            <span className="hidden sm:inline">Send</span>
           </button>
         </div>
-        
-        <div className="mt-2 flex space-x-2">
-          <button 
-            onClick={() => setInput('Create a Hello World React component')}
-            className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded"
-          >
-            Hello World
-          </button>
-          <button 
-            onClick={() => setInput('Create a todo list component with useState')}
-            className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded"
-          >
-            Todo List
-          </button>
-          <button 
-            onClick={() => setInput('Create a contact form with validation')}
-            className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded"
-          >
-            Contact Form
-          </button>
-        </div>
+        <p className="text-xs text-gray-500 mt-2 text-center">
+          Press Enter to send • Shift+Enter for new line
+        </p>
       </div>
     </div>
   );
-};
+}
+
+// Helper: Extract a reasonable filename from prompt
+function extractFileName(prompt: string): string | null {
+  const lower = prompt.toLowerCase();
+
+  // Match common patterns
+  const patterns = [
+    /create a (.+?) component/,
+    /build a (.+?) with/,
+    /make a (.+?) form/,
+    /generate (.+?) component/,
+    /a (.+?) with tailwind/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = lower.match(pattern);
+    if (match) {
+      const name = match[1]
+        .split(' ')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join('');
+      return `${name}.tsx`;
+    }
+  }
+
+  // Fallback: use first few words
+  const words = prompt.split(' ').slice(0, 3);
+  if (words.length > 0) {
+    return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('') + '.tsx';
+  }
+
+  return null;
+}
