@@ -76,52 +76,51 @@ export default defineConfig({ plugins: [react()], server: { host: '0.0.0.0', por
     },
   });
 
-  console.log('[WebContainer] npm install…');
-  const install = await wc.spawn('npm', ['install']);
-  if ((await install.exit) !== 0) throw new Error('npm install failed');
-
   console.log('[WebContainer] Starting Vite…');
   const dev = await wc.spawn('npm', ['run', 'dev']);
+  
+  // SAFE OUTPUT PIPE (handles Uint8Array | ArrayBuffer | string)
+  const decoder = new TextDecoder();
+  let buffer = '';
+  
+  const safeWrite = (chunk: Uint8Array | ArrayBuffer) => {
+    if (chunk instanceof ArrayBuffer) chunk = new Uint8Array(chunk);
+    if (!(chunk instanceof Uint8Array)) return;
+    buffer += decoder.decode(chunk, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    lines.forEach(line => console.log('[Vite]', line));
+  };
+  
   if (typeof WritableStream !== 'undefined') {
-    dev.output.pipeTo(
-      new WritableStream({
-        write(c) { console.log('[Vite]', new TextDecoder().decode(c)); },
-      })
-    );
+    try {
+      dev.output.pipeTo(
+        new WritableStream({
+          write(chunk) {
+            safeWrite(chunk);
+          },
+        })
+      ).catch(() => {});
+    } catch {
+      // fallback below
+    }
   }
-
+  
+  // Fallback reader for older browsers
+  const reader = dev.output.getReader();
+  (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        safeWrite(value);
+      }
+    } catch {}
+  })();
+  
   wc.on('server-ready', (port, url) => {
     console.log(`[WebContainer] Ready → ${url}`);
     window.postMessage({ type: 'serverReady', url, port }, '*');
   });
-
+  
   return wc;
-};
-
-export function useWebContainer() {
-  const [container, setContainer] = useState<WebContainer | null>(null);
-  const [ready, setReady] = useState(false);
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    getWebContainer()
-      .then((wc) => {
-        if (!mounted) return;
-        setContainer(wc);
-        setReady(true);
-      })
-      .catch((e) => console.error('[WebContainer] boot error', e));
-    return () => { mounted = false; };
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data.type === 'serverReady') setUrl(e.data.url);
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, []);
-
-  return { container, ready, url };
-}
