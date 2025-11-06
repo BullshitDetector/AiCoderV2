@@ -2,16 +2,16 @@
 import { WebContainer } from '@webcontainer/api';
 import { useEffect, useState } from 'react';
 
-let _instance: WebContainer | null = null;
-let _bootPromise: Promise<WebContainer> | null = null;
+let wcInstance: WebContainer | null = null;
+let bootPromise: Promise<WebContainer> | null = null;
 
-const getWebContainer = async (): Promise<WebContainer> => {
-  if (_instance) return _instance;
-  if (_bootPromise) return _bootPromise;
+const boot = async (): Promise<WebContainer> => {
+  if (wcInstance) return wcInstance;
+  if (bootPromise) return bootPromise;
 
-  _bootPromise = WebContainer.boot();
-  const wc = await _bootPromise;
-  _instance = wc;
+  bootPromise = WebContainer.boot();
+  const wc = await bootPromise;
+  wcInstance = wc;
 
   console.log('[WebContainer] Booting…');
 
@@ -29,8 +29,7 @@ const getWebContainer = async (): Promise<WebContainer> => {
     },
   });
 
-  // ENABLE HMR
-  console.log('[WebContainer] Enabling HMR...');
+  // HMR: Watch components
   await wc.fs.mkdir('src/components', { recursive: true });
   await wc.fs.watch('src/components', { recursive: true });
 
@@ -51,12 +50,11 @@ const getWebContainer = async (): Promise<WebContainer> => {
     buffer = lines.pop() ?? '';
     lines.forEach(l => console.log('[Vite]', l));
   };
-
   dev.output.pipeTo(new WritableStream({ write: log })).catch(() => {});
 
   wc.on('server-ready', (port, url) => {
     console.log(`[WebContainer] Ready → ${url}`);
-    window.postMessage({ type: 'serverReady', url, port }, '*');
+    window.postMessage({ type: 'serverReady', url }, '*');
   });
 
   return wc;
@@ -69,13 +67,11 @@ export function useWebContainer() {
 
   useEffect(() => {
     let mounted = true;
-    getWebContainer()
-      .then(wc => {
-        if (!mounted) return;
-        setContainer(wc);
-        setReady(true);
-      })
-      .catch(e => console.error('[WebContainer] boot error', e));
+    boot().then(wc => {
+      if (!mounted) return;
+      setContainer(wc);
+      setReady(true);
+    }).catch(console.error);
     return () => { mounted = false; };
   }, []);
 
