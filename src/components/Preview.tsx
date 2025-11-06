@@ -1,21 +1,14 @@
 // src/components/Preview.tsx
+import React from 'react';
 import { useWebContainer } from '../hooks/useWebContainer';
 
-export const Preview = () => {
-  const { url, ready } = useWebContainer();
-
-  if (!ready) {
-    return (
-      <div className="flex h-full items-center justify-center bg-gray-50">
-        <p className="text-gray-600">Booting WebContainer…</p>
-      </div>
-    );
-  }
+export default function Preview() {
+  const { url } = useWebContainer();
 
   if (!url) {
     return (
-      <div className="flex h-full items-center justify-center bg-gray-50">
-        <p className="text-gray-600">Waiting for server…</p>
+      <div className="flex items-center justify-center h-full text-gray-500">
+        Booting WebContainer...
       </div>
     );
   }
@@ -23,9 +16,9 @@ export const Preview = () => {
   return (
     <iframe
       src={url}
-      className="h-full w-full border-0"
-      title="Live Preview"
-      sandbox="allow-scripts allow-same-origin allow-modals"
+      title="Preview"
+      className="w-full h-full border-0"
+      sandbox="allow-scripts allow-same-origin"
     />
   );
-};
+}

@@ -1,37 +1,26 @@
 // src/components/MonacoEditor.tsx
-import * as monaco from "monaco-editor";
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from 'react';
+import * as monaco from 'monaco-editor';
+import { useWebContainer } from '../hooks/useWebContainer';
 
-interface Props {
-  path: string;
-  value: string;
-  onChange: (value: string) => void;
-}
-
-export const MonacoEditor: React.FC<Props> = ({ path, value, onChange }) => {
+export default function MonacoEditor() {
   const divRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const { container: wc } = useWebContainer();
 
   useEffect(() => {
-    if (!divRef.current) return;
-    editorRef.current = monaco.editor.create(divRef.current, {
-      value,
-      language: path.endsWith(".tsx") ? "typescript" : path.endsWith(".ts") ? "typescript" : "javascript",
-      theme: "vs-dark",
+    if (!divRef.current || !wc) return;
+
+    const editor = monaco.editor.create(divRef.current, {
+      value: '// Select a file in the tree\n',
+      language: 'typescript',
+      theme: 'vs-dark',
       automaticLayout: true,
-      minimap: { enabled: false },
     });
-    editorRef.current.onDidChangeModelContent(() => {
-      onChange(editorRef.current?.getValue() ?? "");
-    });
-    return () => editorRef.current?.dispose();
-  }, [path]);
+    editorRef.current = editor;
 
-  useEffect(() => {
-    if (editorRef.current && value !== editorRef.current.getValue()) {
-      editorRef.current.setValue(value);
-    }
-  }, [value]);
+    return () => editor.dispose();
+  }, [wc]);
 
-  return <div ref={divRef} className="h-full w-full" />;
-};
+  return <div ref={divRef} className="h-full" />;
+}
