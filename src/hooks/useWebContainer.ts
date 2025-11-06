@@ -19,7 +19,32 @@ const boot = async (): Promise<WebContainer> => {
     'package.json': { file: { contents: JSON.stringify({ name: 'aicoderv2', private: true, type: 'module', scripts: { dev: 'vite --host 0.0.0.0 --port 3000' }, dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1', '@vitejs/plugin-react': '^4.3.2' }, devDependencies: { vite: '^5.4.8', typescript: '^5.5.4' } }, null, 2) } },
     'vite.config.ts': { file: { contents: `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\nexport default defineConfig({ plugins: [react()], server: { host: '0.0.0.0', port: 3000, strictPort: true } });` } },
     'tsconfig.json': { file: { contents: JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'bundler', jsx: 'react-jsx', strict: true, esModuleInterop: true, skipLibCheck: true } }, null, 2) } },
-    'index.html': { file: { contents: `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>AiCoderV2</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>` } },
+    'index.html': {
+      file: {
+        contents: `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AiCoderV2</title>
+    <!-- STRONG CSP: Allows HMR + WebContainer + iframe -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-eval';
+      style-src 'self' 'unsafe-inline';
+      worker-src 'self' blob:;
+      child-src 'self' blob:;
+      connect-src 'self' ws:;
+      img-src 'self' data:;
+    " />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>`
+      }
+    },
     src: {
       directory: {
         'main.tsx': { file: { contents: `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);` } },
@@ -29,7 +54,7 @@ const boot = async (): Promise<WebContainer> => {
     },
   });
 
-  // HMR: Watch components
+  // HMR: Watch components folder
   await wc.fs.mkdir('src/components', { recursive: true });
   await wc.fs.watch('src/components', { recursive: true });
 
