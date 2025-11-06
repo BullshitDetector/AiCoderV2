@@ -1,75 +1,90 @@
 // src/services/aiService.ts
-import { webContainer } from '../hooks/useWebContainer';
+import { v4 as uuidv4 } from 'uuid';
 
-interface FileOutput {
-  path: string;
+interface Message {
+  role: 'user' | 'assistant';
   content: string;
 }
 
-interface AiResponse {
-  files?: FileOutput[];
-  code?: string;
-  error?: string;
+interface AIResponse {
+  code: string;
+  explanation: string;
+  filename?: string;
 }
 
-const SYSTEM_PROMPT = `You are an expert React + TypeScript + Tailwind developer.
-Return ONLY valid JSON with a "files" array. Example:
-{
-  "files": [
-    { "path": "src/components/Button.tsx", "content": "export default function Button() { ... }" }
-  ]
-}
-No explanations. No markdown.`;
+export class AIService {
+  private apiKey: string;
+  private baseURL = 'https://api.x.ai/v1/chat/completions';
+  private model = 'grok-code-fast-1'; // Fast coding model; swap to 'grok-4' for advanced reasoning
 
-export async function generateCodeFromPrompt(prompt: string): Promise<AiResponse> {
-  const apiKey = import.meta.env.VITE_XAI_API_KEY;
-  const baseUrl = import.meta.env.VITE_XAI_BASE_URL || 'https://api.x.ai/v1';
-  const model = import.meta.env.VITE_XAI_MODEL || 'grok-beta';
-
-  if (!apiKey) {
-    return { error: 'XAI API key not configured. Add VITE_XAI_API_KEY to .env' };
+  constructor() {
+    this.apiKey = import.meta.env.VITE_XAI_API_KEY;
+    if (!this.apiKey) {
+      throw new Error('VITE_XAI_API_KEY is required. Add to .env');
+    }
   }
 
-  try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+  async generateCode(prompt: string, context?: string): Promise<AIResponse> {
+    const messages: Message[] = [
+      {
+        role: 'system',
+        content: `You are an expert React/TypeScript developer. Generate production-ready, clean code based on the prompt. Use Tailwind for styling if relevant. Respond in JSON only: {"code": "full code block", "explanation": "brief steps taken", "filename": "suggested name like HelloWorld.tsx"}`,
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 3000,
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-      }),
-    });
+      {
+        role: 'user',
+        content: `
+          Prompt: ${prompt}
+          
+          ${context ? `Context (existing code/files): ${context}` : ''}
+        `,
+      },
+    ];
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`xAI API error: ${response.status} ${err}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content || '';
-
-    let parsed: { files?: FileOutput[] };
     try {
-      parsed = JSON.parse(content);
-    } catch {
-      return { error: 'Invalid JSON from AI', code: content };
-    }
+      const response = await fetch(this.baseURL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages,
+          max_tokens: 2000,
+          temperature: 0.1, // Low for precise code
+          stream: false, // Set to true for streaming if needed
+        }),
+      });
 
-    return { files: parsed.files };
-  } catch (error) {
-    console.error('AI generation failed:', error);
-    return { error: `Generation failed: ${error.message}` };
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Grok API error: ${errorData.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+
+      // Parse JSON (Grok follows system prompts reliably)
+      const parsed = JSON.parse(content) as AIResponse;
+      return parsed;
+    } catch (error) {
+      console.error('AI Service Error:', error);
+      // Offline fallback
+      return {
+        code: `// Fallback: Grok unavailable\nconsole.log("Prompt: ${prompt}");`,
+        explanation: 'Grok integration failed—check API key and network. Using stub.',
+        filename: 'fallback.tsx',
+      };
+    }
+  }
+
+  // For chat history/conversations
+  async chat(message: string, history: Message[] = []): Promise<string> {
+    const fullMessages = [...history, { role: 'user' as const, content: message }];
+    const result = await this.generateCode(message, history.map(h => `${h.role}: ${h.content}`).join('\n'));
+    return result.explanation;
   }
 }
 
-// Default export for compatibility
-export default { generateCodeFromPrompt };
+// Singleton
+export const aiService = new AIService();
