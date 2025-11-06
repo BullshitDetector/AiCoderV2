@@ -2,7 +2,6 @@
 import { WebContainer } from '@webcontainer/api';
 import { useEffect, useState } from 'react';
 
-// === Singleton Instance ===
 let _instance: WebContainer | null = null;
 let _bootPromise: Promise<WebContainer> | null = null;
 
@@ -13,7 +12,6 @@ const getWebContainer = async (): Promise<WebContainer> => {
   _bootPromise = WebContainer.boot();
   _instance = await _bootPromise;
 
-  // Mount initial project
   await _instance.mount({
     'package.json': {
       file: { contents: JSON.stringify({
@@ -32,7 +30,11 @@ const getWebContainer = async (): Promise<WebContainer> => {
     'vite.config.ts': {
       file: { contents: `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-export default defineConfig({ plugins: [react()], server: { port: 3000 } });` },
+export default defineConfig({
+  plugins: [react()],
+  server: { host: true, port: 3000, strictPort: true },
+  preview: { host: true, port: 3000, strictPort: true },
+});` },
     },
     'tsconfig.json': {
       file: { contents: JSON.stringify({
@@ -67,9 +69,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );` } },
         'App.tsx': { file: { contents: `export default function App() {
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold text-blue-600">AiCoderV2 Ready!</h1>
-      <p className="mt-4">Start coding with AI.</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-8">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+        <h1 className="text-4xl font-bold text-gray-800 mb-4">AiCoderV2 Ready!</h1>
+        <p className="text-lg text-gray-600">WebContainer running on port 3000.</p>
+      </div>
     </div>
   );
 }` } },
@@ -77,23 +81,29 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     },
   });
 
-  // Install deps
   const install = await _instance.spawn('npm', ['install']);
   await install.exit;
 
-  // Start dev server
   const dev = await _instance.spawn('npm', ['run', 'dev', '--', '--host']);
 
-  // Listen for server-ready
+  dev.output.pipeTo(new WritableStream({
+    write(data) {
+      const output = new TextDecoder().decode(data);
+      const urlMatch = output.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch) {
+        const url = urlMatch[1];
+        window.postMessage({ type: 'serverReady', url }, '*');
+      }
+    },
+  }));
+
   _instance.on('server-ready', (port, url) => {
-    console.log('Server ready:', url);
     window.postMessage({ type: 'serverReady', url }, '*');
   });
 
   return _instance;
 };
 
-// === React Hook ===
 export function useWebContainer() {
   const [container, setContainer] = useState<WebContainer | null>(null);
   const [ready, setReady] = useState(false);
@@ -101,25 +111,22 @@ export function useWebContainer() {
 
   useEffect(() => {
     let mounted = true;
-
     getWebContainer().then((wc) => {
       if (!mounted) return;
       setContainer(wc);
       setReady(true);
-
-      const handler = (e: MessageEvent) => {
-        if (e.data.type === 'serverReady') {
-          setUrl(e.data.url);
-        }
-      };
-      window.addEventListener('message', handler);
-      return () => {
-        window.removeEventListener('message', handler);
-        mounted = false;
-      };
     }).catch(console.error);
 
-    return () => { mounted = false; };
+    const handler = (e: MessageEvent) => {
+      if (e.data.type === 'serverReady' && e.data.url) {
+        setUrl(e.data.url);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => {
+      window.removeEventListener('message', handler);
+      mounted = false;
+    };
   }, []);
 
   const installDependencies = async () => {

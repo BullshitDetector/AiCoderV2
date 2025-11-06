@@ -6,7 +6,7 @@ export const Preview: React.FC = () => {
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (e.data.type === 'serverReady') {
+      if (e.data.type === 'serverReady' && e.data.url) {
         setUrl(e.data.url);
       }
     };
@@ -16,8 +16,11 @@ export const Preview: React.FC = () => {
 
   if (!url) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-500">
-        Booting WebContainer...
+      <div className="h-full flex items-center justify-center bg-gray-100 text-gray-600">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p>Booting server on port 3000...</p>
+        </div>
       </div>
     );
   }
@@ -28,6 +31,7 @@ export const Preview: React.FC = () => {
       className="w-full h-full border-0"
       title="Preview"
       sandbox="allow-scripts allow-same-origin allow-modals allow-forms allow-popups"
+      allow="cross-origin-isolated"
     />
   );
 };

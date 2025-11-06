@@ -1,7 +1,7 @@
 // src/components/Layout.tsx
 import React, { useState, useEffect, useCallback } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { FileTree } from "./FileTree";
+import { Explorer } from "./Explorer";
 import { MonacoEditor } from "./MonacoEditor";
 import { Preview } from "./Preview";
 import { ChatInterface } from "./ChatInterface";
@@ -40,7 +40,11 @@ export default function App() { return <Layout />; }`,
 </html>`,
     "vite.config.ts": `import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-export default defineConfig({ plugins: [react()], server: { port: 3000 } });`,
+export default defineConfig({ 
+  plugins: [react()], 
+  server: { host: true, port: 3000, strictPort: true },
+  preview: { host: true, port: 3000, strictPort: true }
+});`,
     "tailwind.config.js": `/** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -163,6 +167,23 @@ module.exports = {
 
   const fileTree = buildTree(files);
 
+  const handleAddFile = (path: string) => {
+    setFiles(prev => ({ ...prev, [path]: `// ${path}\n` }));
+    openFile(path);
+  };
+
+  const handleAddFolder = async (path: string) => {
+    const dirs = path.split("/").slice(0, -1);
+    let currentPath = "";
+    for (const dir of dirs) {
+      currentPath += dir + "/";
+      if (currentPath) {
+        await container?.fs.mkdir(currentPath, { recursive: true });
+      }
+    }
+    setFiles(prev => ({ ...prev }));
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <header className="border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-between bg-white dark:bg-gray-800">
@@ -183,14 +204,14 @@ module.exports = {
         </Panel>
         <PanelResizeHandle className="w-1 bg-gray-300 dark:bg-gray-700 hover:bg-blue-500 transition-colors" />
 
-        {/* File Tree */}
+        {/* Explorer */}
         <Panel defaultSize={20} minSize={15}>
-          <div className="h-full bg-gray-100 dark:bg-gray-800 flex flex-col">
-            <div className="border-b border-gray-300 dark:border-gray-700 px-3 py-2 font-medium">Explorer</div>
-            <div className="flex-1 overflow-auto p-2">
-              <FileTree node={fileTree} onFileClick={openFile} depth={0} />
-            </div>
-          </div>
+          <Explorer
+            fileTree={fileTree}
+            onFileClick={openFile}
+            onAddFile={handleAddFile}
+            onAddFolder={handleAddFolder}
+          />
         </Panel>
         <PanelResizeHandle className="w-1 bg-gray-300 dark:bg-gray-700 hover:bg-blue-500 transition-colors" />
 
