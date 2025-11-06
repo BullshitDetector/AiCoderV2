@@ -16,9 +16,52 @@ const boot = async (): Promise<WebContainer> => {
   console.log('[WebContainer] Booting…');
 
   await wc.mount({
-    'package.json': { file: { contents: JSON.stringify({ name: 'aicoderv2', private: true, type: 'module', scripts: { dev: 'vite --host 0.0.0.0 --port 3000' }, dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1', '@vitejs/plugin-react': '^4.3.2' }, devDependencies: { vite: '^5.4.8', typescript: '^5.5.4' } }, null, 2) } },
-    'vite.config.ts': { file: { contents: `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\nexport default defineConfig({ plugins: [react()], server: { host: '0.0.0.0', port: 3000, strictPort: true } });` } },
-    'tsconfig.json': { file: { contents: JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'bundler', jsx: 'react-jsx', strict: true, esModuleInterop: true, skipLibCheck: true } }, null, 2) } },
+    'package.json': {
+      file: {
+        contents: JSON.stringify(
+          {
+            name: 'aicoderv2',
+            private: true,
+            type: 'module',
+            scripts: { dev: 'vite --host 0.0.0.0 --port 3000' },
+            dependencies: {
+              react: '^18.3.1',
+              'react-dom': '^18.3.1',
+              '@vitejs/plugin-react': '^4.3.2',
+            },
+            devDependencies: { vite: '^5.4.8', typescript: '^5.5.4' },
+          },
+          null,
+          2
+        ),
+      },
+    },
+    'vite.config.ts': {
+      file: {
+        contents: `import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+export default defineConfig({ plugins: [react()], server: { host: '0.0.0.0', port: 3000, strictPort: true } });`,
+      },
+    },
+    'tsconfig.json': {
+      file: {
+        contents: JSON.stringify(
+          {
+            compilerOptions: {
+              target: 'ES2022',
+              module: 'ESNext',
+              moduleResolution: 'bundler',
+              jsx: 'react-jsx',
+              strict: true,
+              esModuleInterop: true,
+              skipLibCheck: true,
+            },
+          },
+          null,
+          2
+        ),
+      },
+    },
     'index.html': {
       file: {
         contents: `<!DOCTYPE html>
@@ -27,7 +70,7 @@ const boot = async (): Promise<WebContainer> => {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AiCoderV2</title>
-    <!-- STRONG CSP: Allows HMR + WebContainer + iframe -->
+    <!-- Minimal CSP that allows Vite HMR + WebContainer -->
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self';
       script-src 'self' 'unsafe-eval';
@@ -42,25 +85,51 @@ const boot = async (): Promise<WebContainer> => {
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
-</html>`
-      }
+</html>`,
+      },
     },
     src: {
       directory: {
-        'main.tsx': { file: { contents: `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);` } },
-        'App.tsx': { file: { contents: `import React from 'react';\nimport Layout from './components/Layout';\nexport default function App() { return <Layout><div className="p-8 text-center">AiCoderV2 Ready!</div></Layout>; }` } },
-        components: { directory: { 'Layout.tsx': { file: { contents: `import React, { ReactNode } from 'react';\nexport default function Layout({ children }: { children: ReactNode }) { return <div className="min-h-screen">{children}</div>; }` } } } },
+        'main.tsx': {
+          file: {
+            contents: `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);`,
+          },
+        },
+        'App.tsx': {
+          file: {
+            contents: `import React from 'react';
+import Layout from './components/Layout';
+export default function App() {
+  return <Layout><div className="p-8 text-center">AiCoderV2 Ready!</div></Layout>;
+}`,
+          },
+        },
+        components: {
+          directory: {
+            'Layout.tsx': {
+              file: {
+                contents: `import React, { ReactNode } from 'react';
+export default function Layout({ children }: { children: ReactNode }) {
+  return <div className="min-h-screen">{children}</div>;
+}`,
+              },
+            },
+          },
+        },
       },
     },
   });
 
-  // HMR: Watch components folder
+  // ---- HMR: watch for AI-generated files ----
   await wc.fs.mkdir('src/components', { recursive: true });
   await wc.fs.watch('src/components', { recursive: true });
 
   console.log('[WebContainer] npm install…');
   const install = await wc.spawn('npm', ['install']);
-  if ((await install.exit) !== 0) throw new Error('install failed');
+  if ((await install.exit) !== 0) throw new Error('npm install failed');
 
   console.log('[WebContainer] Starting Vite…');
   const dev = await wc.spawn('npm', ['run', 'dev']);
@@ -92,12 +161,16 @@ export function useWebContainer() {
 
   useEffect(() => {
     let mounted = true;
-    boot().then(wc => {
-      if (!mounted) return;
-      setContainer(wc);
-      setReady(true);
-    }).catch(console.error);
-    return () => { mounted = false; };
+    boot()
+      .then(wc => {
+        if (!mounted) return;
+        setContainer(wc);
+        setReady(true);
+      })
+      .catch(console.error);
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
