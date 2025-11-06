@@ -1,113 +1,50 @@
 // src/hooks/useWebContainer.ts
 import { WebContainer } from '@webcontainer/api';
+import { useEffect, useState } from 'react';
 
-// === Reactive State (Plain Event Emitter) ===
-interface WebContainerState {
-  instance: WebContainer | null;
-  ready: boolean;
-  url: string | null;
-  processes: { [key: string]: any };
-}
+// === Singleton Instance ===
+let _instance: WebContainer | null = null;
+let _bootPromise: Promise<WebContainer> | null = null;
 
-const initialState: WebContainerState = {
-  instance: null,
-  ready: false,
-  url: null,
-  processes: {},
-};
+const getWebContainer = async (): Promise<WebContainer> => {
+  if (_instance) return _instance;
+  if (_bootPromise) return _bootPromise;
 
-const listeners: Array<(state: WebContainerState) => void> = [];
-let currentState = { ...initialState };
+  _bootPromise = WebContainer.boot();
+  _instance = await _bootPromise;
 
-function updateState(partial: Partial<WebContainerState>) {
-  currentState = { ...currentState, ...partial };
-  listeners.forEach((cb) => cb(currentState));
-}
-
-export const webContainerState = {
-  subscribe: (cb: (state: WebContainerState) => void) => {
-    cb(currentState);
-    listeners.push(cb);
-    return () => {
-      const idx = listeners.indexOf(cb);
-      if (idx > -1) listeners.splice(idx, 1);
-    };
-  },
-  update: updateState,
-};
-
-// === Singleton Boot ===
-let bootPromise: Promise<WebContainer> | null = null;
-
-export async function bootWebContainer(): Promise<WebContainer> {
-  if (bootPromise) return bootPromise;
-
-  bootPromise = (async () => {
-    const instance = await WebContainer.boot();
-
-    await instance.mount({
-      'package.json': {
-        file: {
-          contents: JSON.stringify(
-            {
-              name: 'aicodev',
-              private: true,
-              type: 'module',
-              scripts: {
-                dev: 'vite',
-                build: 'vite build',
-                preview: 'vite preview',
-              },
-              dependencies: {
-                react: '^18.3.1',
-                'react-dom': '^18.3.1',
-              },
-              devDependencies: {
-                vite: '^5.4.8',
-                '@vitejs/plugin-react': '^4.3.2',
-                typescript: '^5.5.4',
-              },
-            },
-            null,
-            2
-          ),
+  // Mount initial project
+  await _instance.mount({
+    'package.json': {
+      file: { contents: JSON.stringify({
+        name: 'aicoderv2',
+        private: true,
+        type: 'module',
+        scripts: { dev: 'vite', build: 'vite build' },
+        dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+        devDependencies: {
+          vite: '^5.4.8',
+          '@vitejs/plugin-react': '^4.3.2',
+          typescript: '^5.5.4',
         },
-      },
-      'vite.config.ts': {
-        file: {
-          contents: `import { defineConfig } from 'vite';
+      }, null, 2) },
+    },
+    'vite.config.ts': {
+      file: { contents: `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()],
-  server: { port: 3000 },
-});
-`,
+export default defineConfig({ plugins: [react()], server: { port: 3000 } });` },
+    },
+    'tsconfig.json': {
+      file: { contents: JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022', module: 'ESNext', moduleResolution: 'bundler',
+          jsx: 'react-jsx', strict: true, esModuleInterop: true,
+          skipLibCheck: true, forceConsistentCasingInFileNames: true,
         },
-      },
-      'tsconfig.json': {
-        file: {
-          contents: JSON.stringify(
-            {
-              compilerOptions: {
-                target: 'ES2022',
-                module: 'ESNext',
-                moduleResolution: 'bundler',
-                jsx: 'react-jsx',
-                strict: true,
-                esModuleInterop: true,
-                skipLibCheck: true,
-                forceConsistentCasingInFileNames: true,
-              },
-            },
-            null,
-            2
-          ),
-        },
-      },
-      'index.html': {
-        file: {
-          contents: `<!DOCTYPE html>
+      }, null, 2) },
+    },
+    'index.html': {
+      file: { contents: `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -118,80 +55,83 @@ export default defineConfig({
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
-</html>
-`,
-        },
-      },
-      'src': {
-        directory: {
-          'main.tsx': {
-            file: {
-              contents: `import React from 'react';
+</html>` },
+    },
+    'src': {
+      directory: {
+        'main.tsx': { file: { contents: `import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-`,
-            },
-          },
-          'App.tsx': {
-            file: {
-              contents: `import React from 'react';
-
-export default function App() {
+  <React.StrictMode><App /></React.StrictMode>
+);` } },
+        'App.tsx': { file: { contents: `export default function App() {
   return (
-    <div className="p-8 font-sans">
+    <div className="p-8">
       <h1 className="text-3xl font-bold text-blue-600">AiCoderV2 Ready!</h1>
-      <p className="mt-4 text-gray-600">Start building with AI.</p>
+      <p className="mt-4">Start coding with AI.</p>
     </div>
   );
-}
-`,
-            },
-          },
-        },
+}` } },
       },
-    });
+    },
+  });
 
-    const installProcess = await instance.spawn('npm', ['install']);
-    await installProcess.exit;
+  // Install deps
+  const install = await _instance.spawn('npm', ['install']);
+  await install.exit;
 
-    const devProcess = await instance.spawn('npm', ['run', 'dev', '--', '--host']);
+  // Start dev server
+  const dev = await _instance.spawn('npm', ['run', 'dev', '--', '--host']);
 
-    instance.on('server-ready', (port: number, url: string) => {
-      updateState({
-        ready: true,
-        url,
-        processes: { ...currentState.processes, dev: devProcess },
-      });
-    });
+  // Listen for server-ready
+  _instance.on('server-ready', (port, url) => {
+    console.log('Server ready:', url);
+    window.postMessage({ type: 'serverReady', url }, '*');
+  });
 
-    updateState({ instance });
-
-    return instance;
-  })();
-
-  return bootPromise;
-}
-
-// === Public Singleton ===
-export const webContainer = bootWebContainer();
+  return _instance;
+};
 
 // === React Hook ===
-import React from 'react';
-
 export function useWebContainer() {
-  const [state, setState] = React.useState<WebContainerState>(currentState);
+  const [container, setContainer] = useState<WebContainer | null>(null);
+  const [ready, setReady] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    const unsubscribe = webContainerState.subscribe(setState);
-    bootWebContainer().catch(console.error);
-    return unsubscribe;
+  useEffect(() => {
+    let mounted = true;
+
+    getWebContainer().then((wc) => {
+      if (!mounted) return;
+      setContainer(wc);
+      setReady(true);
+
+      const handler = (e: MessageEvent) => {
+        if (e.data.type === 'serverReady') {
+          setUrl(e.data.url);
+        }
+      };
+      window.addEventListener('message', handler);
+      return () => {
+        window.removeEventListener('message', handler);
+        mounted = false;
+      };
+    }).catch(console.error);
+
+    return () => { mounted = false; };
   }, []);
 
-  return state;
+  const installDependencies = async () => {
+    if (!container) return;
+    const proc = await container.spawn('npm', ['install']);
+    await proc.exit;
+  };
+
+  const startDevServer = async () => {
+    if (!container) return;
+    await container.spawn('npm', ['run', 'dev', '--', '--host']);
+  };
+
+  return { container, ready, url, installDependencies, startDevServer };
 }
