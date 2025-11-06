@@ -40,7 +40,7 @@ export default function App() { return <Layout />; }`,
 </html>`,
     "vite.config.ts": `import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-export default defineConfig({ plugins: [react()] });`,
+export default defineConfig({ plugins: [react()], server: { port: 3000 } });`,
     "tailwind.config.js": `/** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -78,7 +78,9 @@ module.exports = {
   const [openTabs, setOpenTabs] = useState<string[]>([]);
 
   const openFile = useCallback((path: string) => {
-    if (!openTabs.includes(path)) setOpenTabs(p => [...p, path]);
+    if (!openTabs.includes(path)) {
+      setOpenTabs(prev => [...prev, path]);
+    }
     setActiveFile(path);
   }, [openTabs]);
 
@@ -88,7 +90,8 @@ module.exports = {
     const newTabs = openTabs.filter(t => t !== path);
     setOpenTabs(newTabs);
     if (activeFile === path) {
-      setActiveFile(newTabs[idx] ?? newTabs[idx - 1] ?? null);
+      const next = newTabs[idx] ?? newTabs[idx - 1] ?? null;
+      setActiveFile(next);
     }
   };
 
@@ -96,52 +99,63 @@ module.exports = {
 
   useEffect(() => {
     if (!ready || !container) return;
-    const write = async () => {
-      for (const [p, c] of Object.entries(files)) {
-        const dirs = p.split("/").slice(0, -1);
-        let cur = "";
-        for (const d of dirs) {
-          cur += d + "/";
-          await container.fs.mkdir(cur, { recursive: true });
+
+    const writeFiles = async () => {
+      for (const [path, content] of Object.entries(files)) {
+        const dirs = path.split("/").slice(0, -1);
+        let currentPath = "";
+        for (const dir of dirs) {
+          currentPath += dir + "/";
+          await container.fs.mkdir(currentPath, { recursive: true });
         }
-        await container.fs.writeFile(p, c);
+        await container.fs.writeFile(path, content);
       }
       await installDependencies();
       await startDevServer();
     };
-    write();
+
+    writeFiles().catch(console.error);
   }, [ready, container, files, installDependencies, startDevServer]);
 
   const handleFileChange = async (path: string, content: string) => {
-    setFiles(p => ({ ...p, [path]: content }));
-    if (container) await container.fs.writeFile(path, content);
+    setFiles(prev => ({ ...prev, [path]: content }));
+    if (container) {
+      await container.fs.writeFile(path, content);
+    }
   };
 
   useEffect(() => {
     const handler = (e: CustomEventInit<{ filename: string; code: string }>) => {
+      if (!e.detail) return;
       const { filename, code } = e.detail;
-      const full = filename.startsWith("src/") ? filename : `src/${filename}`;
-      setFiles(p => ({ ...p, [full]: code }));
-      openFile(full);
+      const fullPath = filename.startsWith("src/") ? filename : `src/${filename}`;
+      setFiles(prev => ({ ...prev, [fullPath]: code }));
+      openFile(fullPath);
     };
+
     window.addEventListener("addFile", handler as EventListener);
     return () => window.removeEventListener("addFile", handler as EventListener);
   }, [openFile]);
 
-  const buildTree = (obj: Record<string, string>): FileNode => {
+  const buildTree = (filesObj: Record<string, string>): FileNode => {
     const root: FileNode = { name: "", path: "", type: "directory", children: [] };
-    Object.keys(obj).forEach(p => {
-      const parts = p.split("/");
-      let cur = root;
+    Object.keys(filesObj).forEach(filePath => {
+      const parts = filePath.split("/");
+      let current = root;
       parts.forEach((part, i) => {
         if (!part) return;
-        const file = i === parts.length - 1;
-        let node = cur.children!.find(c => c.name === part);
+        const isFile = i === parts.length - 1;
+        let node = current.children!.find(c => c.name === part);
         if (!node) {
-          node = { name: part, path: parts.slice(0, i + 1).join("/"), type: file ? "file" : "directory", children: file ? undefined : [] };
-          cur.children!.push(node);
+          node = {
+            name: part,
+            path: parts.slice(0, i + 1).join("/"),
+            type: isFile ? "file" : "directory",
+            children: isFile ? undefined : []
+          };
+          current.children!.push(node);
         }
-        if (!file) cur = node;
+        if (!isFile) current = node;
       });
     });
     return root;
@@ -154,40 +168,82 @@ module.exports = {
       <header className="border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-between bg-white dark:bg-gray-800">
         <h1 className="text-xl font-bold">R3alm Dev</h1>
         <div className="flex items-center space-x-2 text-sm">
-          {ready ? <span className="text-green-600">WebContainer ready</span> : <span className="text-orange-600">Booting…</span>}
+          {ready ? (
+            <span className="text-green-600">WebContainer ready</span>
+          ) : (
+            <span className="text-orange-600">Booting…</span>
+          )}
         </div>
       </header>
 
       <PanelGroup direction="horizontal" className="flex-1">
-        <Panel defaultSize={25} minSize={15}><ChatInterface /></Panel>
+        {/* Chat */}
+        <Panel defaultSize={25} minSize={15}>
+          <ChatInterface />
+        </Panel>
         <PanelResizeHandle className="w-1 bg-gray-300 dark:bg-gray-700 hover:bg-blue-500 transition-colors" />
+
+        {/* File Tree */}
         <Panel defaultSize={20} minSize={15}>
           <div className="h-full bg-gray-100 dark:bg-gray-800 flex flex-col">
             <div className="border-b border-gray-300 dark:border-gray-700 px-3 py-2 font-medium">Explorer</div>
-            <div className="flex-1 overflow-auto p-2"><FileTree node={fileTree} onFileClick={openFile} depth={0} /></div>
+            <div className="flex-1 overflow-auto p-2">
+              <FileTree node={fileTree} onFileClick={openFile} depth={0} />
+            </div>
           </div>
         </Panel>
         <PanelResizeHandle className="w-1 bg-gray-300 dark:bg-gray-700 hover:bg-blue-500 transition-colors" />
-        <Panel defaultSize={35} minSize={25}>
+
+        {/* Editor */}
+        <Panel defaultSize={30} minSize={25}>
           <div className="h-full flex flex-col bg-white dark:bg-gray-900">
             {openTabs.length > 0 && (
               <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto bg-gray-50 dark:bg-gray-800">
-                {openTabs.map(t => (
-                  <div key={t} className={`flex items-center px-3 py-1 text-sm cursor-pointer border-r border-gray-200 dark:border-gray-700 ${activeFile === t ? "bg-white dark:bg-gray-900 text-blue-600" : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`} onClick={() => setActiveFile(t)}>
-                    <span className="truncate max-w-xs">{t.split("/").pop()}</span>
-                    <button onClick={e => { e.stopPropagation(); closeTab(t); }} className="ml-2 text-gray-500 hover:text-red-600">×</button>
+                {openTabs.map(tab => (
+                  <div
+                    key={tab}
+                    className={`flex items-center px-3 py-1 text-sm cursor-pointer border-r border-gray-200 dark:border-gray-700 ${
+                      activeFile === tab
+                        ? "bg-white dark:bg-gray-900 text-blue-600"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`}
+                    onClick={() => setActiveFile(tab)}
+                  >
+                    <span className="truncate max-w-xs">{tab.split("/").pop()}</span>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        closeTab(tab);
+                      }}
+                      className="ml-2 text-gray-500 hover:text-red-600"
+                    >
+                      ×
+                    </button>
                   </div>
                 ))}
               </div>
             )}
             <div className="flex-1">
-              {activeFile ? <MonacoEditor path={activeFile} value={files[activeFile] || ""} onChange={v => handleFileChange(activeFile, v || "")} /> :
-                <div className="h-full flex items-center justify-center text-gray-500">Open a file to start editing</div>}
+              {activeFile ? (
+                <MonacoEditor
+                  path={activeFile}
+                  value={files[activeFile] || ""}
+                  onChange={value => handleFileChange(activeFile, value || "")}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-500">
+                  Open a file to start editing
+                </div>
+              )}
             </div>
           </div>
         </Panel>
         <PanelResizeHandle className="w-1 bg-gray-300 dark:bg-gray-700 hover:bg-blue-500 transition-colors" />
-        <Panel defaultSize={30} minSize={20}><Preview /></Panel>
+
+        {/* Preview */}
+        <Panel defaultSize={25} minSize={20}>
+          <Preview />
+        </Panel>
       </PanelGroup>
     </div>
   );
