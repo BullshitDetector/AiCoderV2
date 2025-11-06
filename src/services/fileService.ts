@@ -1,61 +1,64 @@
-import { FileNode } from '../types';
+// src/services/fileService.ts
+import { FileSystemTree } from '@webcontainer/api';
+import { webContainer } from '../hooks/useWebContainer';
 
-export class FileService {
-  private files: Map<string, string> = new Map();
-
-  async readFile(path: string): Promise<string> {
-    return this.files.get(path) || '';
-  }
-
-  async writeFile(path: string, content: string): Promise<void> {
-    this.files.set(path, content);
-    // In production, sync with WebContainer
-  }
-
-  async createFile(path: string, content: string = ''): Promise<void> {
-    this.files.set(path, content);
-  }
-
-  async deleteFile(path: string): Promise<void> {
-    this.files.delete(path);
-  }
-
-  async createDirectory(path: string): Promise<void> {
-    // Directory creation logic
-  }
-
-  getFileTree(): FileNode[] {
-    const tree: FileNode[] = [];
-    const paths = Array.from(this.files.keys()).sort();
-
-    for (const path of paths) {
-      const parts = path.split('/');
-      let current = tree;
-
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        const isFile = i === parts.length - 1;
-        
-        let node = current.find(n => n.name === part);
-        
-        if (!node) {
-          node = {
-            name: part,
-            type: isFile ? 'file' : 'directory',
-            path: parts.slice(0, i + 1).join('/'),
-            children: isFile ? undefined : []
-          };
-          current.push(node);
-        }
-
-        if (!isFile && node.children) {
-          current = node.children;
-        }
-      }
-    }
-
-    return tree;
-  }
+export interface FileNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: FileNode[];
 }
 
-export const fileService = new FileService();
+let fsTree: FileSystemTree = {};
+
+/** Refresh the in-memory file tree from WebContainer */
+export async function refreshFileTree(): Promise<FileNode> {
+  const instance = await webContainer;
+  fsTree = await instance.fs.readDir('/', { withFileTypes: true });
+  return buildTree('/', fsTree);
+}
+
+/** Convert WebContainer Dirent tree → UI-friendly structure */
+function buildTree(basePath: string, tree: FileSystemTree): FileNode {
+  const entries = Object.entries(tree);
+  const children: FileNode[] = [];
+
+  for (const [name, entry] of entries) {
+    const path = `${basePath}${basePath === '/' ? '' : '/'}${name}`;
+    if ('directory' in entry) {
+      children.push({
+        name,
+        path,
+        type: 'directory',
+        children: buildTree(path, entry.directory).children,
+      });
+    } else {
+      children.push({ name, path, type: 'file' });
+    }
+  }
+
+  return { name: basePath.split('/').pop() || '/', path: basePath, type: 'directory', children };
+}
+
+/** Read file content as string */
+export async function readFile(path: string): Promise<string> {
+  const instance = await webContainer;
+  const buf = await instance.fs.readFile(path);
+  return new TextDecoder().decode(buf);
+}
+
+/** Write or create file (with auto-mkdir) */
+export async function writeFile(path: string, content: string): Promise<void> {
+  const instance = await webContainer;
+  const dir = path.split('/').slice(0, -1).join('/');
+  if (dir) {
+    await instance.fs.mkdir(dir, { recursive: true });
+  }
+  await instance.fs.writeFile(path, content);
+}
+
+/** Optional: Delete file */
+export async function deleteFile(path: string): Promise<void> {
+  const instance = await webContainer;
+  await instance.fs.rm(path);
+}
