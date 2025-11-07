@@ -45,7 +45,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { label: 'Logout', href: '/logout' },
   ];
 
-  const [fileWidth, setFileWidth] = useState(256);
+  const [fileTreeWidth, setFileTreeWidth] = useState(256);
+  const [editorWidth, setEditorWidth] = useState(600);
   const [mode, setMode] = useState<'code' | 'preview' | 'database'>('code');
   const [currentFile, setCurrentFile] = useState<string | null>(null);
 
@@ -65,9 +66,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex flex-1 overflow-hidden">
               {mode === 'code' && (
                 <>
-                  <FileTree className="bg-gray-800 border-r border-gray-700 overflow-y-auto p-4" style={{ width: `${fileWidth}px` }} />
-                  <Resizer onResize={(delta) => setFileWidth(Math.max(200, fileWidth + delta))} />
-                  <MonacoEditor className="flex-1 bg-gray-900 overflow-hidden" />
+                  <FileTree
+                    className="bg-gray-800 border-r border-gray-700 overflow-y-auto p-4"
+                    style={{ width: `${fileTreeWidth}px`, minWidth: '200px', maxWidth: '600px' }}
+                  />
+                  <Resizer
+                    onResize={(delta) => {
+                      const newWidth = Math.max(200, Math.min(600, fileTreeWidth + delta));
+                      setFileTreeWidth(newWidth);
+                    }}
+                  />
+                  <MonacoEditor
+                    className="bg-gray-900 overflow-hidden"
+                    style={{ width: `${editorWidth}px`, minWidth: '300px' }}
+                  />
+                  <Resizer
+                    onResize={(delta) => {
+                      const newWidth = Math.max(300, editorWidth + delta);
+                      setEditorWidth(newWidth);
+                    }}
+                  />
+                  <Preview className="flex-1 bg-gray-800 overflow-hidden border-l border-gray-700" />
                 </>
               )}
               {mode === 'preview' && <Preview className="flex-1 bg-gray-800 overflow-hidden" />}
