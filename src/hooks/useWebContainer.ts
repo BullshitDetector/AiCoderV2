@@ -1,211 +1,178 @@
-// src/hooks/useWebContainer.ts
+import { useState, useEffect } from 'react';
 import { WebContainer } from '@webcontainer/api';
-import { useEffect, useState } from 'react';
 
-let wcInstance: WebContainer | null = null;
-let bootPromise: Promise<WebContainer> | null = null;
-
-const boot = async (): Promise<WebContainer> => {
-  if (wcInstance) return wcInstance;
-  if (bootPromise) return bootPromise;
-
-  bootPromise = WebContainer.boot();
-  const wc = await bootPromise;
-  wcInstance = wc;
-
-  console.log('[WebContainer] Booting…');
-
-  await wc.mount({
-    'package.json': {
-      file: {
-        contents: JSON.stringify(
-          {
-            name: 'aicoderv2',
-            private: true,
-            type: 'module',
-            scripts: { dev: 'vite --host 0.0.0.0 --port 3000' },
-            dependencies: {
-              react: '^18.3.1',
-              'react-dom': '^18.3.1',
-              '@vitejs/plugin-react': '^4.3.2',
-            },
-            devDependencies: { vite: '^5.4.8', typescript: '^5.5.4' },
-          },
-          null,
-          2
-        ),
-      },
-    },
-    'vite.config.ts': {
-      file: {
-        contents: `import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-export default defineConfig({ plugins: [react()], server: { host: '0.0.0.0', port: 3000, strictPort: true, hmr: true } });`,
-      },
-    },
-    'tsconfig.json': {
-      file: {
-        contents: JSON.stringify(
-          {
-            compilerOptions: {
-              target: 'ES2022',
-              module: 'ESNext',
-              moduleResolution: 'bundler',
-              jsx: 'react-jsx',
-              strict: true,
-              esModuleInterop: true,
-              skipLibCheck: true,
-            },
-          },
-          null,
-          2
-        ),
-      },
-    },
-    'index.html': {
-      file: {
-        contents: `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AiCoderV2</title>
-    <meta http-equiv="Content-Security-Policy" content="
-      default-src 'self';
-      script-src 'self' 'unsafe-eval';
-      style-src 'self' 'unsafe-inline';
-      worker-src 'self' blob:;
-      child-src 'self' blob:;
-      connect-src 'self' ws: wss:;
-      img-src 'self' data:;
-    " />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>`,
-      },
-    },
-    src: {
-      directory: {
-        'main.tsx': {
-          file: {
-            contents: `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);`,
-          },
-        },
-        'App.tsx': {
-          file: {
-            contents: `import React from 'react';
-import Layout from './components/Layout';
-export default function App() {
-  return <Layout><div className="p-8 text-center">AiCoderV2 Ready!</div></Layout>;
-}`,
-          },
-        },
-        components: {
-          directory: {
-            'Layout.tsx': {
-              file: {
-                contents: `import React, { ReactNode } from 'react';
-export default function Layout({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen">{children}</div>;
-}`,
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  // HMR: Watch components
-  await wc.fs.mkdir('src/components', { recursive: true });
-  await wc.fs.watch('src/components', { recursive: true });
-
-  console.log('[WebContainer] npm install…');
-  const install = await wc.spawn('npm', ['install']);
-  const installExit = await install.exit;
-  if (installExit !== 0) throw new Error(`npm install failed (exit ${installExit})`);
-
-  console.log('[WebContainer] Starting Vite…');
-  const dev = await wc.spawn('npm', ['run', 'dev']);
-
-  // === LOGGING WITH FALLBACK ===
-  const decoder = new TextDecoder();
-  let buffer = '';
-  const log = (chunk: Uint8Array | ArrayBuffer) => {
-    if (chunk instanceof ArrayBuffer) chunk = new Uint8Array(chunk);
-    if (!(chunk instanceof Uint8Array)) return;
-    buffer += decoder.decode(chunk, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    lines.forEach(l => console.log('[Vite]', l));
-  };
-
-  if ('pipeTo' in dev.output) {
-    dev.output.pipeTo(new WritableStream({ write: log })).catch(() => {});
-  } else {
-    const reader = dev.output.getReader();
-    (async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          log(value);
-        }
-      } catch {}
-    })();
-  }
-
-  // === SERVER READY WITH TIMEOUT FALLBACK ===
-  let resolved = false;
-  const timeout = setTimeout(() => {
-    if (!resolved) {
-      console.warn('[WebContainer] server-ready timeout, using fallback URL');
-      window.postMessage({ type: 'serverReady', url: 'http://localhost:3000' }, '*');
-      resolved = true;
-    }
-  }, 30000);
-
-  wc.on('server-ready', (port, url) => {
-    if (resolved) return;
-    clearTimeout(timeout);
-    console.log(`[WebContainer] Ready → ${url}`);
-    window.postMessage({ type: 'serverReady', url }, '*');
-    resolved = true;
-  });
-
-  return wc;
-};
-
-export function useWebContainer() {
-  const [container, setContainer] = useState<WebContainer | null>(null);
-  const [ready, setReady] = useState(false);
+export const useWebContainer = () => {
+  const [wc, setWc] = useState<WebContainer | null>(null);
+  const [files, setFiles] = useState<Record<string, string>>({});
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    let mounted = true;
-    boot().then(wc => {
-      if (!mounted) return;
-      setContainer(wc);
-      setReady(true);
-    }).catch(console.error);
-    return () => { mounted = false; };
-  }, []);
+    let isMounted = true;
 
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data.type === 'serverReady' && e.data.url) {
-        setUrl(e.data.url);
+    (async () => {
+      try {
+        const instance = await WebContainer.boot();
+        // Mount initial project files for a basic Vite + React setup
+        await instance.mount({
+          'package.json': {
+            file: {
+              contents: JSON.stringify(
+                {
+                  name: 'webcontainer-app',
+                  type: 'module',
+                  dependencies: {
+                    react: '^18.3.1',
+                    'react-dom': '^18.3.1',
+                  },
+                  devDependencies: {
+                    '@types/react': '^18.3.3',
+                    '@types/react-dom': '^18.3.0',
+                    '@vitejs/plugin-react': '^4.3.1',
+                    typescript: '^5.5.3',
+                    vite: '^5.4.1',
+                  },
+                  scripts: {
+                    dev: 'vite --port 3111',
+                  },
+                },
+                null,
+                2
+              ),
+            },
+          },
+          'vite.config.ts': {
+            file: {
+              contents: `
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3111,
+  },
+});
+              `.trim(),
+            },
+          },
+          'index.html': {
+            file: {
+              contents: `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebContainer App</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
+              `.trim(),
+            },
+          },
+          'src': {
+            directory: {
+              'main.tsx': {
+                file: {
+                  contents: `
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <h1>Hello from WebContainer!</h1>
+  </React.StrictMode>
+);
+                  `.trim(),
+                },
+              },
+            },
+          },
+          'tsconfig.json': {
+            file: {
+              contents: JSON.stringify(
+                {
+                  compilerOptions: {
+                    target: 'ESNext',
+                    lib: ['DOM', 'DOM.Iterable', 'ESNext'],
+                    module: 'ESNext',
+                    skipLibCheck: true,
+                    esModuleInterop: true,
+                    jsx: 'react-jsx',
+                    strict: true,
+                  },
+                },
+                null,
+                2
+              ),
+            },
+          },
+        });
+
+        // Fetch and set initial files
+        const initialFiles = await getFiles(instance);
+        if (isMounted) setFiles(initialFiles);
+
+        // Install dependencies
+        const installProcess = await instance.spawn('npm', ['install']);
+        await installProcess.exit;
+
+        // Start dev server
+        const devProcess = await instance.spawn('npm', ['run', 'dev']);
+
+        instance.on('server-ready', (port, serverUrl) => {
+          if (isMounted) setUrl(serverUrl);
+        });
+
+        instance.on('error', (err) => console.error('WebContainer error:', err));
+
+        // Listen for file system changes and update files state
+        instance.on('fs-change', async (changedPath) => {
+          if (isMounted) {
+            const updatedFiles = await getFiles(instance);
+            setFiles(updatedFiles);
+          }
+        });
+
+        if (isMounted) setWc(instance);
+
+        return () => {
+          devProcess.kill();
+          instance.destroy();
+        };
+      } catch (error) {
+        console.error('Failed to boot WebContainer:', error);
       }
+    })();
+
+    return () => {
+      isMounted = false;
     };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
   }, []);
 
-  return { container, ready, url };
+  return { wc, files, url };
+};
+
+// Helper to recursively fetch all files and contents
+async function getFiles(wc: WebContainer): Promise<Record<string, string>> {
+  const files: Record<string, string> = {};
+
+  async function recurse(path: string) {
+    const entries = await wc.fs.readdir(path, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = `${path}/${entry.name}`.replace(/^\/\//, '/');
+      if (entry.isDirectory()) {
+        await recurse(fullPath);
+      } else if (entry.isFile()) {
+        const content = await wc.fs.readFile(fullPath, 'utf-8');
+        files[fullPath] = content;
+      }
+    }
+  }
+
+  await recurse('/');
+  return files;
 }

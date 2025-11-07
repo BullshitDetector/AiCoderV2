@@ -1,4 +1,5 @@
 import React, { CSSProperties } from 'react';
+import { useWebContainerContext } from '../context/WebContainerContext';
 
 interface PreviewProps {
   className?: string;
@@ -6,11 +7,21 @@ interface PreviewProps {
 }
 
 const Preview: React.FC<PreviewProps> = ({ className, style }) => {
-  // Stub - Implement WebContainer iframe or preview
+  const { url } = useWebContainerContext();
+
+  if (!url) {
+    return <div className={`flex items-center justify-center h-full text-gray-400 ${className}`} style={style}>Booting preview...</div>;
+  }
+
   return (
-    <div className={`p-4 ${className}`} style={style}>
-      Preview Panel (Integrate WebContainer runtime here for live app view)
-    </div>
+    <iframe
+      src={url}
+      className={`w-full h-full border-0 ${className}`}
+      style={style}
+      title="Preview"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+    />
   );
 };
 

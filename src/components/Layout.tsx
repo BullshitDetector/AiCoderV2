@@ -1,4 +1,3 @@
-// src/components/Layout.tsx
 import React, { useState } from 'react';
 import Menu from './Menu';
 import FileTree from './FileTree';
@@ -8,6 +7,8 @@ import ChatInterface from './ChatInterface';
 import DatabasePanel from './DatabasePanel';
 import Resizer from './Resizer';
 import { Home, ShoppingCart, Wrench, Info, Mail } from 'lucide-react';
+import { useWebContainer } from '../hooks/useWebContainer';
+import { WebContainerProvider } from '../context/WebContainerContext';
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -46,33 +47,40 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const [fileWidth, setFileWidth] = useState(256);
   const [mode, setMode] = useState<'code' | 'preview' | 'database'>('code');
+  const [currentFile, setCurrentFile] = useState<string | null>(null);
+
+  const { wc, files, url } = useWebContainer();
+
+  const contextValue = { wc, files, url, currentFile, setCurrentFile };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900 text-white font-sans antialiased">
-      <header className="bg-gray-800 shadow-md">
-        <Menu items={menuItems} userItems={userItems} mode={mode} onModeChange={setMode} />
-      </header>
-      <div className="flex flex-1 overflow-hidden">
-        <ChatInterface className="w-80 flex-shrink-0 bg-gray-800 border-r border-gray-700 overflow-y-auto p-4 rounded-tr-lg" />
-        <div className="flex flex-col flex-1">
-          <div className="flex flex-1 overflow-hidden">
-            {mode === 'code' && (
-              <>
-                <FileTree className="bg-gray-800 border-r border-gray-700 overflow-y-auto p-4" style={{ width: `${fileWidth}px` }} />
-                <Resizer onResize={(delta) => setFileWidth(Math.max(200, fileWidth + delta))} />
-                <MonacoEditor className="flex-1 bg-gray-900 overflow-hidden" />
-              </>
-            )}
-            {mode === 'preview' && <Preview className="flex-1 bg-gray-800 overflow-hidden" />}
-            {mode === 'database' && <DatabasePanel className="flex-1 bg-gray-800 overflow-hidden" />}
+    <WebContainerProvider value={contextValue}>
+      <div className="flex flex-col h-screen bg-gray-900 text-white font-sans antialiased">
+        <header className="bg-gray-800 shadow-md">
+          <Menu items={menuItems} userItems={userItems} mode={mode} onModeChange={setMode} />
+        </header>
+        <div className="flex flex-1 overflow-hidden">
+          <ChatInterface className="w-80 flex-shrink-0 bg-gray-800 border-r border-gray-700 overflow-y-auto p-4 rounded-tr-lg" />
+          <div className="flex flex-col flex-1">
+            <div className="flex flex-1 overflow-hidden">
+              {mode === 'code' && (
+                <>
+                  <FileTree className="bg-gray-800 border-r border-gray-700 overflow-y-auto p-4" style={{ width: `${fileWidth}px` }} />
+                  <Resizer onResize={(delta) => setFileWidth(Math.max(200, fileWidth + delta))} />
+                  <MonacoEditor className="flex-1 bg-gray-900 overflow-hidden" />
+                </>
+              )}
+              {mode === 'preview' && <Preview className="flex-1 bg-gray-800 overflow-hidden" />}
+              {mode === 'database' && <DatabasePanel className="flex-1 bg-gray-800 overflow-hidden" />}
+            </div>
+            <footer className="bg-gray-800 h-32 border-t border-gray-700 p-4 overflow-y-auto">
+              <div className="text-gray-400">Terminal (Stub - Integrate WebContainer console here)</div>
+            </footer>
           </div>
-          <footer className="bg-gray-800 h-32 border-t border-gray-700 p-4 overflow-y-auto">
-            <div className="text-gray-400">Terminal (Stub - Integrate WebContainer console here)</div>
-          </footer>
         </div>
+        {children}
       </div>
-      {children}
-    </div>
+    </WebContainerProvider>
   );
 };
 
