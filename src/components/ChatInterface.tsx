@@ -1,88 +1,70 @@
-// src/components/ChatInterface.tsx
-import React, { useState } from 'react';
-import { aiService } from '../services/aiService';
-import { getFileService } from '../services/fileService';
-import { useWebContainer } from '../hooks/useWebContainer';
-import { Send, Loader2 } from 'lucide-react';
+import React, { useState, CSSProperties } from 'react';
+import { Send, Paperclip, Sparkles } from 'lucide-react';
 
-export default function ChatInterface() {
+interface ChatInterfaceProps {
+  className?: string;
+  style?: CSSProperties;
+}
+
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }) => {
+  const [messages, setMessages] = useState([
+    { id: 1, text: 'How can Bolt help you today?', sender: 'ai' },
+    { id: 2, text: 'Create a Todo App with Supabase Integration', sender: 'user' },
+    { id: 3, text: 'Generating...', sender: 'ai', steps: ['Create initial files', 'Install dependencies', 'npm install'] },
+  ]);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string; loading?: boolean }[]>([]);
-  const [sending, setSending] = useState(false);
-  const { container: wc, ready, url } = useWebContainer();
-  const fileService = wc ? getFileService(wc) : null;
-  const isReady = ready && !!url && !!fileService;
 
-  const send = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !isReady || sending) return;
-
-    const prompt = input.trim();
-    setMessages(m => [...m, { role: 'user', content: prompt }]);
-    setInput('');
-    setSending(true);
-    setMessages(m => [...m, { role: 'assistant', content: 'Generating...', loading: true }]);
-
-    try {
-      const resp = await aiService.generateCode(prompt);
-      if (!resp.filename) throw new Error('No filename');
-      await fileService!.applyAIResponse(resp);
-      setMessages(m => [
-        ...m.slice(0, -1),
-        { role: 'assistant', content: `Created \`${resp.filename}\` and added to preview!\n\n${resp.explanation}` },
-      ]);
-    } catch (err) {
-      setMessages(m => [
-        ...m.slice(0, -1),
-        { role: 'assistant', content: `Error: ${(err as Error).message}` },
-      ]);
-    } finally {
-      setSending(false);
+  const handleSend = () => {
+    if (input.trim()) {
+      setMessages([...messages, { id: messages.length + 1, text: input, sender: 'user' }]);
+      setInput('');
+      // Simulate AI response - integrate real aiService here
+      setTimeout(() => {
+        setMessages((prev) => [...prev, { id: prev.length + 1, text: 'Processing your request...', sender: 'ai', steps: ['Step 1', 'Step 2'] }]);
+      }, 1000);
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && !isReady ? (
-          <div className="text-center text-gray-500 py-8">
-            <p className="font-medium text-lg">AiCoderV2 Ready!</p>
-            <p className="text-sm mt-1">WebContainer is booting… (~30s)</p>
+    <div className={`flex flex-col h-full ${className}`} style={style}>
+      <div className="flex-1 overflow-y-auto space-y-4">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`p-3 rounded-lg ${
+              msg.sender === 'user' ? 'bg-blue-600 ml-auto max-w-[80%]' : 'bg-gray-700 mr-auto max-w-[80%]'
+            }`}
+          >
+            <p className="text-sm">{msg.text}</p>
+            {msg.steps && (
+              <ul className="mt-2 space-y-1">
+                {msg.steps.map((step, idx) => (
+                  <li key={idx} className="flex items-center text-xs text-gray-300">
+                    <Sparkles size={12} className="mr-1" /> {step}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-        ) : messages.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
-            <p className="font-medium">Ask me to build anything!</p>
-            <p className="text-sm">e.g., "Create a countdown timer from 60 seconds"</p>
-          </div>
-        ) : (
-          messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-xs p-3 rounded-lg text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
-                {m.loading && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
-                {m.content}
-              </div>
-            </div>
-          ))
-        )}
+        ))}
       </div>
-
-      <form onSubmit={send} className="p-4 border-t flex items-center gap-2">
+      <div className="mt-4 flex items-center border-t border-gray-700 pt-4">
+        <button className="text-gray-400 hover:text-white mr-2">
+          <Paperclip size={20} />
+        </button>
         <input
           value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder={isReady ? "Type your prompt..." : "Booting..."}
-          className={`flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${!isReady ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
-          disabled={!isReady || sending}
-          autoFocus={isReady}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          className="flex-1 bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+          placeholder="Ask AI to generate code..."
         />
-        <button
-          type="submit"
-          disabled={!isReady || !input.trim() || sending}
-          className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
-        >
-          {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+        <button onClick={handleSend} className="ml-2 bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600">
+          <Send size={20} />
         </button>
-      </form>
+      </div>
     </div>
   );
-}
+};
+
+export default ChatInterface;

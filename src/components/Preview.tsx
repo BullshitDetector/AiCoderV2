@@ -1,27 +1,17 @@
-// src/components/Preview.tsx
-import React from 'react';
-import { useWebContainer } from '../hooks/useWebContainer';
+import React, { CSSProperties } from 'react';
 
-export default function Preview() {
-  const { url, ready } = useWebContainer();
-
-  if (!ready || !url) {
-    return (
-      <div className="flex items-center justify-center h-full bg-gray-50 text-gray-600">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
-          <p>Booting WebContainer...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <iframe
-      src={url}
-      title="Preview"
-      className="w-full h-full border-0"
-      sandbox="allow-scripts allow-same-origin allow-forms"
-    />
-  );
+interface PreviewProps {
+  className?: string;
+  style?: CSSProperties;
 }
+
+const Preview: React.FC<PreviewProps> = ({ className, style }) => {
+  // Stub - Implement WebContainer iframe or preview
+  return (
+    <div className={`p-4 ${className}`} style={style}>
+      Preview Panel (Integrate WebContainer runtime here for live app view)
+    </div>
+  );
+};
+
+export default Preview;

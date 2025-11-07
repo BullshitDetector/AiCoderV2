@@ -1,54 +1,70 @@
-// src/components/Layout.tsx
 import React from 'react';
-import ChatInterface from './ChatInterface';
+import Menu from './Menu';
 import FileTree from './FileTree';
 import MonacoEditor from './MonacoEditor';
 import Preview from './Preview';
-import { useWebContainer } from '../hooks/useWebContainer';
+import ChatInterface from './ChatInterface';
+import { Home, ShoppingCart, Wrench, Info, Mail } from 'lucide-react';
 
-export default function Layout({ children }: { children?: React.ReactNode }) {
-  const { ready } = useWebContainer(); // Wait for boot
+interface LayoutProps {
+  children?: React.ReactNode;
+}
 
-  if (!ready) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-100">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Booting AiCoderV2...</h1>
-          <p className="text-gray-600">WebContainer starting (this takes ~30s first time).</p>
-        </div>
-      </div>
-    );
-  }
+const Layout: React.FC<LayoutProps> = ({ children }) => {
+  const menuItems: MenuItem[] = [
+    { label: 'Home', href: '/', icon: Home },
+    {
+      label: 'Products',
+      href: '/products',
+      icon: ShoppingCart,
+      children: [
+        { label: 'Item1', href: '/products/item1' },
+        { label: 'Item2', href: '/products/item2' },
+      ],
+    },
+    {
+      label: 'Services',
+      href: '/services',
+      icon: Wrench,
+      children: [
+        { label: 'Consult', href: '/services/consult' },
+        { label: 'Support', href: '/services/support' },
+      ],
+    },
+    { label: 'About', href: '/about', icon: Info },
+    { label: 'Contact', href: '/contact', icon: Mail },
+  ];
+
+  const userItems: MenuItem[] = [
+    { label: 'Profile', href: '/profile' },
+    { label: 'Settings', href: '/settings' },
+    { label: 'Logout', href: '/logout' },
+  ];
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <header className="h-12 border-b bg-white flex items-center px-4 font-medium shadow-sm">
-        AiCoderV2 – AI-Powered IDE
+    <div className="flex flex-col h-screen bg-gray-900 text-white font-sans antialiased">
+      <header className="bg-gray-800 shadow-md">
+        <Menu items={menuItems} userItems={userItems} />
       </header>
-
-      {/* Main Workspace */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* File Tree (Left Sidebar) */}
-        <aside className="w-64 border-r bg-gray-50 p-2">
-          <FileTree />
-        </aside>
-
-        {/* Editor + Preview Split */}
-        <div className="flex-1 flex">
-          <section className="w-1/2 border-r bg-gray-900">
-            <MonacoEditor />
-          </section>
-          <section className="w-1/2 relative">
-            <Preview />
-          </section>
+      <div className="flex flex-1 overflow-hidden">
+        <ChatInterface className="w-80 bg-gray-800 border-r border-gray-700 overflow-y-auto p-4 rounded-tr-lg" />
+        <div className="flex flex-col flex-1">
+          <div className="flex flex-1 overflow-hidden">
+            <FileTree className="w-64 bg-gray-800 border-r border-gray-700 overflow-y-auto p-4" />
+            <div className="flex flex-1">
+              <MonacoEditor className="flex-1 bg-gray-900 overflow-hidden" />
+              <Preview className="flex-1 bg-gray-800 overflow-hidden border-l border-gray-700" />
+            </div>
+          </div>
+          <footer className="bg-gray-800 h-32 border-t border-gray-700 p-4 overflow-y-auto">
+            {/* Terminal stub - to be implemented */}
+            <div className="text-gray-400">Terminal (Stub - Integrate WebContainer console here)</div>
+          </footer>
         </div>
       </div>
-
-      {/* Chat Footer (Bottom Panel with Input) */}
-      <footer className="h-64 border-t bg-white shadow-lg">
-        <ChatInterface />
-      </footer>
+      {children}
     </div>
   );
-}
+};
+
+export default Layout;
