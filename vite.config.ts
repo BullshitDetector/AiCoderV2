@@ -6,10 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    // Proxy /preview to the WebContainer dev server
+    strictPort: true,
     proxy: {
       '/preview': {
-        target: 'http://localhost:5173',
+        target: 'http://localhost:3000', // WebContainer uses random port → we fix via message
         ws: true,
         changeOrigin: true,
         secure: false,

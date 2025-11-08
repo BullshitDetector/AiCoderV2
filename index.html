@@ -1,26 +1,33 @@
-<!-- Add this inside <body> but before the script tag -->
-<template id="initial-files">
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AiCoderV2</title>
-    <script type="module" src="/src/main.tsx"></script>
+    <meta http-equiv="Content-Security-Policy" 
+          content="script-src 'self' 'unsafe-eval' https:; worker-src 'self' blob:; child-src 'self' blob:;" />
+    <!-- WebContainer boot script -->
+    <script src="https://webcontainer.dev/webcontainer.js" type="module"></script>
   </head>
-  <body>
+  <body class="bg-gray-950">
     <div id="root"></div>
+
+    <!-- Initial files for mount -->
+    <template id="initial-files">
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>AiCoderV2</title>
+          <script type="module" src="/src/main.tsx"></script>
+        </head>
+        <body>
+          <div id="root"></div>
+        </body>
+      </html>
+    </template>
+
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-</template>
-
-<!-- Proxy endpoint for the iframe -->
-<script type="module">
-  // This proxy lets the iframe load the Vite dev server running inside WebContainer
-  window.addEventListener('message', (e) => {
-    if (e.data.type === 'webcontainer-ready') {
-      const iframe = document.querySelector('iframe[src="/preview"]');
-      if (iframe) iframe.src = e.data.url;
-    }
-  });
-</script>

@@ -8,137 +8,79 @@ declare global {
   }
 }
 
-interface UseWebContainerReturn {
-  container: WebContainer | null;
-  ready: boolean;
-  error: string | null;
-  logs: string[];
-}
-
-export function useWebContainer(): UseWebContainerReturn {
+export function useWebContainer() {
   const [container, setContainer] = useState<WebContainer | null>(null);
   const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const containerRef = useRef<WebContainer | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
 
   useEffect(() => {
     let unmounted = false;
 
     async function boot() {
-      try {
-        // 1. Wait for WebContainer to be available on window
-        if (!window.WebContainer) {
-          setError('WebContainer script not loaded');
-          return;
-        }
-
-        const wc = await WebContainer.boot();
-        if (unmounted) return;
-
-        containerRef.current = wc;
-        setContainer(wc);
-        setLogs((l) => [...l, 'WebContainer booted']);
-
-        // 2. Mount the current project files (optional – you can also write files manually)
-        await wc.mount({
-          // You can leave this empty or pre-populate with your starter files
-          'package.json': {
-            file: {
-              contents: JSON.stringify(
-                {
-                  name: 'aicoderv2',
-                  private: true,
-                  type: 'module',
-                  scripts: {
-                    dev: 'vite',
-                    build: 'vite build',
-                    preview: 'vite preview',
-                  },
-                  dependencies: {
-                    react: '^18.3.1',
-                    'react-dom': '^18.3.1',
-                  },
-                  devDependencies: {
-                    '@vitejs/plugin-react': '^4.3.2',
-                    vite: '^5.4.8',
-                    typescript: '^5.5.3',
-                  },
-                },
-                null,
-                2,
-              ),
-            },
-          },
-          'vite.config.ts': {
-            file: {
-              contents: `import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()],
-  server: { port: 5173 },
-});`,
-            },
-          },
-          'index.html': {
-            file: { contents: document.querySelector('template#initial-files')?.innerHTML || '' },
-          },
-          // Add more starter files here if you want
-        });
-
-        // 3. Install dependencies
-        setLogs((l) => [...l, 'Installing npm dependencies...']);
-        const installProcess = await wc.spawn('npm', ['install']);
-        installProcess.output.pipeTo(
-          new WritableStream({
-            write(data) {
-              setLogs((l) => [...l, data]);
-            },
-          }),
-        );
-        const installExit = await installProcess.exit;
-        if (installExit !== 0) throw new Error('npm install failed');
-
-        setLogs((l) => [...l, 'Dependencies installed']);
-
-        // 4. Start dev server
-        const devProcess = await wc.spawn('npm', ['run', 'dev']);
-        devProcess.output.pipeTo(
-          new WritableStream({
-            write(data) {
-              setLogs((l) => [...l, data]);
-            },
-          }),
-        );
-
-        // 5. Wait for the server to expose a URL
-        wc.on('server-ready', (port, url) => {
-          if (port === 5173) {
-            setLogs((l) => [...l, `Preview ready at ${url}`]);
-            setReady(true);
-          }
-        });
-
-        // Optional: listen to file changes (correct API)
-        wc.fs.watch('/', { recursive: true }, (event, filename) => {
-          setLogs((l) => [...l, `File ${event}: ${filename}`]);
-        });
-      } catch (err: any) {
-        if (!unmounted) {
-          setError(err?.message || 'Failed to start WebContainer');
-          console.error(err);
-        }
+      if (!window.WebContainer) {
+        setLogs(l => [...l, 'WebContainer script not loaded']);
+        return;
       }
+
+      const wc = await WebContainer.boot();
+      if (unmounted) return;
+
+      setContainer(wc);
+      setLogs(l => [...l, 'WebContainer booted']);
+
+      // Mount initial files
+      const template = document.querySelector('#initial-files')?.innerHTML || '';
+      await wc.mount({
+        'package.json': {
+          file: { contents: JSON.stringify({
+            name: 'aicoderv2',
+            private: true,
+            type: 'module',
+            scripts: { dev: 'vite', build: 'vite build' },
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: {
+              '@vitejs/plugin-react': '^4.3.2',
+              vite: '^5.4.8',
+              typescript: '^5.5.3'
+            }
+          }, null, 2) }
+        },
+        'vite.config.ts': {
+          file: { contents: `import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()] });` }
+        },
+        'index.html': { file: { contents: template } },
+        'src': { directory: {} }
+      });
+
+      // Install
+      setLogs(l => [...l, 'npm install...']);
+      const install = await wc.spawn('npm', ['install']);
+      install.output.pipeTo(new WritableStream({ write: d => setLogs(l => [...l, d]) }));
+      await install.exit;
+
+      // Start dev server
+      const dev = await wc.spawn('npm', ['run', 'dev']);
+      dev.output.pipeTo(new WritableStream({ write: d => setLogs(l => [...l, d]) }));
+
+      wc.on('server-ready', (port, url) => {
+        setPreviewUrl(url);
+        setReady(true);
+        setLogs(l => [...l, `Preview: ${url}`]);
+        window.dispatchEvent(new CustomEvent('webcontainer-ready', { detail: { url } }));
+      });
+
+      wc.fs.watch('/', { recursive: true }, () => {
+        window.dispatchEvent(new CustomEvent('fs-change'));
+      });
     }
 
     boot();
 
     return () => {
       unmounted = true;
-      containerRef.current?.teardown?.();
     };
   }, []);
 
-  return { container, ready, error, logs };
+  return { container, ready, logs, previewUrl };
 }
