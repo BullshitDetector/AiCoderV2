@@ -6,14 +6,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: {
-      // Bypass CORS for WebContainer script
-      '/webcontainer.js': {
-        target: 'https://webcontainers.io',
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/webcontainer.js/, '/webcontainer.js')
-      }
-    }
+    // NO PROXY – direct import works perfectly
   }
 });
