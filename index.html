@@ -4,18 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AiCoderV2</title>
-    <meta http-equiv="Content-Security-Policy" 
-          content="script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://webcontainers.io; worker-src 'self' blob:; child-src 'self' blob:;" />
     
-    <!-- OFFICIAL WebContainer CDN (webcontainer.dev is down) -->
+    <!-- CRITICAL: Working WebContainer CDN (tested Nov 08 2025) -->
     <script type="module">
-      import { WebContainer } from 'https://cdn.jsdelivr.net/npm/@webcontainer/api@1/dist/standalone.js';
+      import { WebContainer } from 'https://cdn.jsdelivr.net/npm/@webcontainer/api@1.2.0/dist/standalone.js';
       window.WebContainer = WebContainer;
     </script>
+
+    <!-- Allow everything WebContainer needs -->
+    <meta http-equiv="Content-Security-Policy" 
+          content="script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; 
+                   worker-src 'self' blob:; 
+                   child-src 'self' blob:;" />
   </head>
   <body class="bg-gray-950">
     <div id="root"></div>
 
+    <!-- Initial project files for instant mount -->
     <template id="initial-files">
       <!DOCTYPE html>
       <html lang="en">
