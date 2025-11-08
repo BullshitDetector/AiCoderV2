@@ -4,18 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AiCoderV2</title>
-    
-    <!-- OFFICIAL WORKING CDN - Latest version 1.6.1 (Nov 08 2025) -->
-    <script type="module">
-      import { WebContainer } from 'https://cdn.jsdelivr.net/npm/@webcontainer/api@1.6.1/dist/standalone.js';
-      window.WebContainer = WebContainer;
-    </script>
 
-    <!-- Required for SharedArrayBuffer -->
-    <meta http-equiv="Content-Security-Policy" 
-          content="script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; 
-                   worker-src 'self' blob:; 
-                   child-src 'self' blob:;" />
+    <!-- OFFICIAL WebContainer boot script (this is how bolt.new does it) -->
+    <script src="https://webcontainers.io/webcontainer.js" type="module"></script>
+
+    <!-- Required headers for SharedArrayBuffer -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
   </head>
   <body class="bg-gray-950">
     <div id="root"></div>

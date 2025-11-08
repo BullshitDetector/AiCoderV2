@@ -1,46 +1,46 @@
 // src/context/WebContainerContext.tsx
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { WebContainer } from '@webcontainer/api';
 
-interface WebContainerContextType {
+interface ContextType {
   container: WebContainer | null;
   ready: boolean;
   logs: string[];
   previewUrl: string;
 }
 
-const WebContainerContext = createContext<WebContainerContextType | undefined>(undefined);
+const Context = createContext<ContextType | undefined>(undefined);
 
 export const useWebContainerContext = () => {
-  const context = useContext(WebContainerContext);
-  if (!context) {
-    throw new Error('useWebContainerContext must be used within a WebContainerProvider');
-  }
-  return context;
+  const ctx = useContext(Context);
+  if (!ctx) throw new Error('useWebContainerContext must be used within provider');
+  return ctx;
 };
 
 export const WebContainerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [container, setContainer] = React.useState<WebContainer | null>(null);
-  const [ready, setReady] = React.useState(false);
-  const [logs, setLogs] = React.useState<string[]>(['Booting WebContainer...']);
-  const [previewUrl, setPreviewUrl] = React.useState('');
+  const [container, setContainer] = useState<WebContainer | null>(null);
+  const [ready, setReady] = useState(false);
+  const [logs, setLogs] = useState<string[]>(['Booting WebContainer...']);
+  const [previewUrl, setPreviewUrl] = useState('');
 
-  React.useEffect(() => {
+  useEffect(() => {
     let unmounted = false;
 
     async function boot() {
-      if (!window.WebContainer) {
-        setLogs(l => [...l, 'WebContainer failed to load']);
+      // Wait for official script to expose WebContainer
+      if (!('WebContainer' in window)) {
+        setLogs(l => [...l, 'Waiting for webcontainer.js...']);
         return;
       }
 
-      const wc = await window.WebContainer.boot();
+      const wc = await (window as any).WebContainer.boot();
       if (unmounted) return;
 
       setContainer(wc);
-      setLogs(l => [...l, 'WebContainer booted']);
+      setLogs(l => [...l, 'WebContainer booted ✓']);
 
-      const template = document.querySelector('#initial-files')?.innerHTML || '';
+      // Mount initial files
+      const tmpl = document.querySelector('#initial-files')?.innerHTML || '';
       await wc.mount({
         'package.json': { file: { contents: JSON.stringify({
           name: 'aicoderv2', private: true, type: 'module',
@@ -49,10 +49,11 @@ export const WebContainerProvider: React.FC<{ children: React.ReactNode }> = ({ 
           devDependencies: { '@vitejs/plugin-react': '^4.3.2', vite: '^5.4.8' }
         }, null, 2) }},
         'vite.config.ts': { file: { contents: `import { defineConfig } from 'vite'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: [react()] });` }},
-        'index.html': { file: { contents: template }},
+        'index.html': { file: { contents: tmpl }},
         'src': { directory: {} }
       });
 
+      // Install + dev server
       const install = await wc.spawn('npm', ['install']);
       install.output.pipeTo(new WritableStream({ write: d => setLogs(l => [...l, d]) }));
       await install.exit;
@@ -73,8 +74,8 @@ export const WebContainerProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, []);
 
   return (
-    <WebContainerContext.Provider value={{ container, ready, logs, previewUrl }}>
+    <Context.Provider value={{ container, ready, logs, previewUrl }}>
       {children}
-    </WebContainerContext.Provider>
+    </Context.Provider>
   );
 };
