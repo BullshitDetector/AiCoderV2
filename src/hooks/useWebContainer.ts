@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { WebContainer } from '@webcontainer/api';
 
 export const useWebContainer = () => {
-  const [wc, setWc] = useState<WebContainer | null>(null);
+  const [wc, setWc] = useState<any>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
   const [url, setUrl] = useState<string | null>(null);
 
@@ -11,6 +10,11 @@ export const useWebContainer = () => {
 
     (async () => {
       try {
+        console.log('Booting WebContainer...');
+        const WebContainer = (window as any).WebContainer; // Use global from CDN script
+        if (!WebContainer) {
+          throw new Error('WebContainer not available from CDN');
+        }
         const instance = await WebContainer.boot();
         // Mount initial project files for a basic Vite + React setup
         await instance.mount({
@@ -100,86 +104,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     lib: ['DOM', 'DOM.Iterable', 'ESNext'],
                     module: 'ESNext',
                     skipLibCheck: true,
-                    esModuleInterop: true,
-                    jsx: 'react-jsx',
-                    strict: true,
-                  },
-                },
-                null,
-                2
-              ),
-            },
-          },
-        });
-
-        // Fetch and set initial files
-        const initialFiles = await getFiles(instance);
-        if (isMounted) setFiles(initialFiles);
-
-        // Install dependencies
-        const installProcess = await instance.spawn('npm', ['install']);
-        await installProcess.exit;
-
-        // Start dev server
-        const devProcess = await instance.spawn('npm', ['run', 'dev']);
-
-        instance.on('server-ready', (port, serverUrl) => {
-          if (isMounted) setUrl(serverUrl);
-        });
-
-        instance.on('error', (err) => console.error('WebContainer error:', err));
-
-        // Listen for file system changes and update files state
-        instance.on('fs-change', async (changedPath) => {
-          if (isMounted) {
-            const updatedFiles = await getFiles(instance);
-            setFiles(updatedFiles);
-          }
-        });
-
-        if (isMounted) setWc(instance);
-
-        return () => {
-          devProcess.kill();
-          instance.destroy();
-        };
-      } catch (error) {
-        console.error('Failed to boot WebContainer:', error);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const refreshFiles = async () => {
-    if (wc) {
-      const updatedFiles = await getFiles(wc);
-      setFiles(updatedFiles);
-    }
-  };
-
-  return { wc, files, url, refreshFiles };
-};
-
-// Helper to recursively fetch all files and contents
-async function getFiles(wc: WebContainer): Promise<Record<string, string>> {
-  const files: Record<string, string> = {};
-
-  async function recurse(path: string) {
-    const entries = await wc.fs.readdir(path, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = `${path}/${entry.name}`.replace(/^\/\//, '/');
-      if (entry.isDirectory()) {
-        await recurse(fullPath);
-      } else if (entry.isFile()) {
-        const content = await wc.fs.readFile(fullPath, 'utf-8');
-        files[fullPath] = content;
-      }
-    }
-  }
-
-  await recurse('/');
-  return files;
-}
+                    esModule
