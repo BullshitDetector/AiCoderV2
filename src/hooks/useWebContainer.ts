@@ -1,193 +1,144 @@
-import { useState, useEffect } from 'react';
+// src/hooks/useWebContainer.ts
+import { useEffect, useRef, useState } from 'react';
 import { WebContainer } from '@webcontainer/api';
 
-let globalWebContainer: WebContainer | null = null;
+declare global {
+  interface Window {
+    WebContainer?: typeof WebContainer;
+  }
+}
 
-export const useWebContainer = () => {
-  const [wc, setWc] = useState<WebContainer | null>(null);
-  const [files, setFiles] = useState<Record<string, string>>({});
-  const [url, setUrl] = useState<string | null>(null);
+interface UseWebContainerReturn {
+  container: WebContainer | null;
+  ready: boolean;
+  error: string | null;
+  logs: string[];
+}
+
+export function useWebContainer(): UseWebContainerReturn {
+  const [container, setContainer] = useState<WebContainer | null>(null);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const containerRef = useRef<WebContainer | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
+    let unmounted = false;
 
-    (async () => {
+    async function boot() {
       try {
-        if (globalWebContainer) {
-          console.log('Using existing WebContainer instance');
-          const instance = globalWebContainer;
-          const initialFiles = await getFiles(instance);
-          if (isMounted) setFiles(initialFiles);
-          if (isMounted) setWc(instance);
+        // 1. Wait for WebContainer to be available on window
+        if (!window.WebContainer) {
+          setError('WebContainer script not loaded');
           return;
         }
 
-        console.log('Booting new WebContainer instance');
-        const instance = await WebContainer.boot();
-        globalWebContainer = instance;
+        const wc = await WebContainer.boot();
+        if (unmounted) return;
 
-        // Mount initial project files for a basic Vite + React setup
-        await instance.mount({
+        containerRef.current = wc;
+        setContainer(wc);
+        setLogs((l) => [...l, 'WebContainer booted']);
+
+        // 2. Mount the current project files (optional – you can also write files manually)
+        await wc.mount({
+          // You can leave this empty or pre-populate with your starter files
           'package.json': {
             file: {
               contents: JSON.stringify(
                 {
-                  name: 'webcontainer-app',
+                  name: 'aicoderv2',
+                  private: true,
                   type: 'module',
+                  scripts: {
+                    dev: 'vite',
+                    build: 'vite build',
+                    preview: 'vite preview',
+                  },
                   dependencies: {
                     react: '^18.3.1',
                     'react-dom': '^18.3.1',
                   },
                   devDependencies: {
-                    '@types/react': '^18.3.3',
-                    '@types/react-dom': '^18.3.0',
-                    '@vitejs/plugin-react': '^4.3.1',
+                    '@vitejs/plugin-react': '^4.3.2',
+                    vite: '^5.4.8',
                     typescript: '^5.5.3',
-                    vite: '^5.4.1',
-                  },
-                  scripts: {
-                    dev: 'vite --port 3111',
                   },
                 },
                 null,
-                2
+                2,
               ),
             },
           },
           'vite.config.ts': {
             file: {
-              contents: `
-import { defineConfig } from 'vite';
+              contents: `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: {
-    port: 3111,
-  },
-});
-              `.trim(),
+  server: { port: 5173 },
+});`,
             },
           },
           'index.html': {
-            file: {
-              contents: `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebContainer App</title>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
-</html>
-              `.trim(),
-            },
+            file: { contents: document.querySelector('template#initial-files')?.innerHTML || '' },
           },
-          'src': {
-            directory: {
-              'main.tsx': {
-                file: {
-                  contents: `
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <h1>Hello from WebContainer!</h1>
-  </React.StrictMode>
-);
-                  `.trim(),
-                },
-              },
-            },
-          },
-          'tsconfig.json': {
-            file: {
-              contents: JSON.stringify(
-                {
-                  compilerOptions: {
-                    target: 'ESNext',
-                    lib: ['DOM', 'DOM.Iterable', 'ESNext'],
-                    module: 'ESNext',
-                    skipLibCheck: true,
-                    esModuleInterop: true,
-                    jsx: 'react-jsx',
-                    strict: true,
-                  },
-                },
-                null,
-                2
-              ),
-            },
-          },
+          // Add more starter files here if you want
         });
 
-        // Fetch and set initial files
-        const initialFiles = await getFiles(instance);
-        if (isMounted) setFiles(initialFiles);
+        // 3. Install dependencies
+        setLogs((l) => [...l, 'Installing npm dependencies...']);
+        const installProcess = await wc.spawn('npm', ['install']);
+        installProcess.output.pipeTo(
+          new WritableStream({
+            write(data) {
+              setLogs((l) => [...l, data]);
+            },
+          }),
+        );
+        const installExit = await installProcess.exit;
+        if (installExit !== 0) throw new Error('npm install failed');
 
-        // Install dependencies
-        const installProcess = await instance.spawn('npm', ['install']);
-        await installProcess.exit;
+        setLogs((l) => [...l, 'Dependencies installed']);
 
-        // Start dev server
-        const devProcess = await instance.spawn('npm', ['run', 'dev']);
+        // 4. Start dev server
+        const devProcess = await wc.spawn('npm', ['run', 'dev']);
+        devProcess.output.pipeTo(
+          new WritableStream({
+            write(data) {
+              setLogs((l) => [...l, data]);
+            },
+          }),
+        );
 
-        instance.on('server-ready', (port, serverUrl) => {
-          if (isMounted) setUrl(serverUrl);
-        });
-
-        instance.on('error', (err) => console.error('WebContainer error:', err));
-
-        // Listen for file system changes and update files state
-        instance.on('fs-change', async (changedPath) => {
-          if (isMounted) {
-            const updatedFiles = await getFiles(instance);
-            setFiles(updatedFiles);
+        // 5. Wait for the server to expose a URL
+        wc.on('server-ready', (port, url) => {
+          if (port === 5173) {
+            setLogs((l) => [...l, `Preview ready at ${url}`]);
+            setReady(true);
           }
         });
 
-        if (isMounted) setWc(instance);
-
-        return () => {
-          devProcess.kill();
-          instance.destroy();
-          globalWebContainer = null;
-        };
-      } catch (error) {
-        console.error('Failed to boot WebContainer:', error);
+        // Optional: listen to file changes (correct API)
+        wc.fs.watch('/', { recursive: true }, (event, filename) => {
+          setLogs((l) => [...l, `File ${event}: ${filename}`]);
+        });
+      } catch (err: any) {
+        if (!unmounted) {
+          setError(err?.message || 'Failed to start WebContainer');
+          console.error(err);
+        }
       }
-    })();
+    }
+
+    boot();
 
     return () => {
-      isMounted = false;
+      unmounted = true;
+      containerRef.current?.teardown?.();
     };
   }, []);
 
-  return { wc, files, url };
-};
-
-// Helper to recursively fetch all files and contents
-async function getFiles(wc: WebContainer): Promise<Record<string, string>> {
-  const files: Record<string, string> = {};
-
-  async function recurse(path: string) {
-    const entries = await wc.fs.readdir(path, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = `${path}/${entry.name}`.replace(/^\/\//, '/');
-      if (entry.isDirectory()) {
-        await recurse(fullPath);
-      } else if (entry.isFile()) {
-        const content = await wc.fs.readFile(fullPath, 'utf-8');
-        files[fullPath] = content;
-      }
-    }
-  }
-
-  await recurse('/');
-  return files;
+  return { container, ready, error, logs };
 }

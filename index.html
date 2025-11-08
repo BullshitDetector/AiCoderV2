@@ -1,26 +1,26 @@
+<!-- Add this inside <body> but before the script tag -->
+<template id="initial-files">
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AiCoderV2</title>
+    <script type="module" src="/src/main.tsx"></script>
   </head>
   <body>
     <div id="root"></div>
-
-    <!-- FINAL WORKING WEBCONTAINER (NOV 2025) -->
-    <script type="module">
-      window.__bootWebContainer = async () => {
-        const { WebContainer } = await import(
-          'https://cdn.jsdelivr.net/npm/@webcontainer/api@1.3.0/+esm'
-        );
-        console.log('WebContainer LOADED from jsDelivr');
-        return WebContainer;
-      };
-      console.log('WebContainer boot script READY');
-    </script>
-
-    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+</template>
+
+<!-- Proxy endpoint for the iframe -->
+<script type="module">
+  // This proxy lets the iframe load the Vite dev server running inside WebContainer
+  window.addEventListener('message', (e) => {
+    if (e.data.type === 'webcontainer-ready') {
+      const iframe = document.querySelector('iframe[src="/preview"]');
+      if (iframe) iframe.src = e.data.url;
+    }
+  });
+</script>

@@ -1,33 +1,43 @@
-import React, { CSSProperties } from 'react';
-import { useWebContainerContext } from '../context/WebContainerContext';
+// src/components/Preview.tsx
+import React from 'react';
+import { useWebContainer } from '../hooks/useWebContainer';
 
-interface PreviewProps {
-  className?: string;
-  style?: CSSProperties;
-}
-
-const Preview: React.FC<PreviewProps> = ({ className, style }) => {
-  const { url } = useWebContainerContext();
-
-  if (!url) {
-    return (
-      <div className={`flex flex-col items-center justify-center h-full text-gray-400 ${className}`} style={style}>
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-        <p>Booting preview server...</p>
-      </div>
-    );
-  }
+export default function Preview() {
+  const { ready, error, logs } = useWebContainer();
 
   return (
-    <iframe
-      src={url}
-      className={`w-full h-full border-0 ${className}`}
-      style={style}
-      title="Preview"
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
-    />
-  );
-};
+    <div className="h-full flex flex-col bg-gray-900 text-gray-100">
+      <div className="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center justify-between">
+        <h3 className="font-medium">Preview</h3>
+        <div className="flex items-center gap-2">
+          {ready && <span className="text-green-400 text-xs">● Ready</span>}
+          {error && <span className="text-red-400 text-xs">● Error</span>}
+        </div>
+      </div>
 
-export default Preview;
+      <div className="flex-1 relative">
+        {ready ? (
+          <iframe
+            src="/preview"
+            className="absolute inset-0 w-full h-full border-0"
+            title="Preview"
+            sandbox="allow-scripts allow-same-origin allow-modals allow-forms"
+          />
+        ) : (
+          <div className="flex flex-col h-full">
+            <div className="flex-1 flex items-center justify-center">
+              {error ? (
+                <p className="text-red-400">{error}</p>
+              ) : (
+                <p className="text-gray-500">Booting WebContainer...</p>
+              )}
+            </div>
+            <pre className="text-xs p-4 bg-black overflow-auto h-48">
+              {logs.join('')}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
