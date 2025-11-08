@@ -1,100 +1,70 @@
-import React, { CSSProperties, useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, Sparkles } from 'lucide-react';
+// src/components/ChatInterface.tsx
+import React, { useState } from 'react';
+import { Send, Sparkles } from 'lucide-react';
 import { useWebContainerContext } from '../context/WebContainerContext';
-import { generateCode } from '../services/xaiService';
 
-interface ChatInterfaceProps {
-  className?: string;
-  style?: CSSProperties;
-}
-
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ className, style }) => {
-  const [messages, setMessages] = useState([
-    { id: 1, text: 'How can Bolt help you today?', sender: 'ai' },
-    { id: 2, text: 'Create a Todo App with Supabase Integration', sender: 'user' },
-    { id: 3, text: 'Generating...', sender: 'ai', steps: ['Create initial files', 'Install dependencies', 'npm install'] },
-  ]);
+export default function ChatInterface() {
+  const { container, ready } = useWebContainerContext();
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([
+    { role: 'assistant', content: 'Hey! Tell me what you want to build. I’ll create the files instantly.' }
+  ]);
 
-  const { wc, refreshFiles, setCurrentFile } = useWebContainerContext();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || !container || !ready) return;
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+    const userMsg = input.trim();
+    setMessages(m => [...m, { role: 'user', content: userMsg }]);
+    setInput('');
+    setMessages(m => [...m, { role: 'assistant', content: 'Thinking…' }]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const handleSend = async () => {
-    if (input.trim()) {
-      const userMessage = { id: messages.length + 1, text: input, sender: 'user' };
-      setMessages([...messages, userMessage]);
-      setInput('');
-      setIsLoading(true);
-
-      try {
-        const code = await generateCode(input);
-        const fileName = `/src/components/${input.split(' ')[0] || 'Generated'}.tsx`.toLowerCase();
-        if (wc) {
-          await wc.fs.writeFile(fileName, code);
-          await refreshFiles(); // Manually refresh file list
-          setCurrentFile(fileName);
-        }
-        const aiMessage = { id: messages.length + 2, text: `Generated code and saved to ${fileName}:\n\`\`\`tsx\n${code}\n\`\`\``, sender: 'ai' };
-        setMessages(prev => [...prev, aiMessage]);
-      } catch (error: any) {
-        const errorMessage = { id: messages.length + 2, text: `Error: ${error.message}`, sender: 'ai' };
-        setMessages(prev => [...prev, errorMessage]);
-      } finally {
-        setIsLoading(false);
-      }
-    }
+    // Placeholder – real AI will go here
+    setTimeout(() => {
+      setMessages(m => m.slice(0, -1)); // remove "Thinking…"
+      setMessages(m => [...m, { role: 'assistant', content: `You said: "${userMsg}"\n\nAI file generation coming next!` }]);
+    }, 800);
   };
 
   return (
-    <div className={`flex flex-col h-full ${className}`} style={style}>
-      <div className="flex-1 overflow-y-auto space-y-4">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`p-3 rounded-lg ${
-              msg.sender === 'user' ? 'bg-blue-600 ml-auto max-w-[80%]' : 'bg-gray-700 mr-auto max-w-[80%]' 
-            }`}
-          >
-            <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-            {msg.steps && (
-              <ul className="mt-2 space-y-1">
-                {msg.steps.map((step, idx) => (
-                  <li key={idx} className="flex items-center text-xs text-gray-300">
-                    <Sparkles size={12} className="mr-1" /> {step}
-                  </li>
-                ))}
-              </ul>
-            )}
+    <div className="h-full flex flex-col bg-gray-900">
+      <div className="px-4 py-3 border-b border-gray-700 flex items-center gap-2">
+        <Sparkles className="w-5 h-5 text-purple-400" />
+        <h3 className="font-semibold text-sm">AI Assistant</h3>
+        {!ready && <span className="text-xs text-orange-400 ml-auto">Booting…</span>}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-xs px-4 py-2 rounded-lg ${
+              msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-100'
+            }`}>
+              {msg.content}
+            </div>
           </div>
         ))}
       </div>
-      <div className="mt-4 flex items-center border-t border-gray-700 pt-4">
-        <button className="text-gray-400 hover:text-white mr-2">
-          <Paperclip size={20} />
-        </button>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-          className="flex-1 bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
-          placeholder="Ask AI to generate code..."
-        />
-        <button onClick={handleSend} className="ml-2 bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600">
-          <Send size={20} />
-        </button>
-      </div>
-      <div ref={messagesEndRef} />
+
+      <form onSubmit={handleSubmit} className="p-4 border-t border-gray-700">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder={ready ? "Describe what you want…" : "Waiting for WebContainer…"}
+            className="flex-1 bg-gray-800 text-gray-100 px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            disabled={!ready}
+          />
+          <button
+            type="submit"
+            disabled={!ready || !input.trim()}
+            className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition"
+          >
+            <Send className="w-5 h-5" />
+          </button>
+        </div>
+      </form>
     </div>
   );
-};
-
-export default ChatInterface;
+}

@@ -1,7 +1,7 @@
 // src/components/FileTree.tsx
 import React, { useEffect, useState } from 'react';
 import { File, Folder, ChevronRight, ChevronDown, FileCode } from 'lucide-react';
-import { useWebContainer } from '../hooks/useWebContainer';
+import { useWebContainerContext } from '../context/WebContainerContext';
 
 interface TreeNode {
   name: string;
@@ -11,7 +11,7 @@ interface TreeNode {
 }
 
 export default function FileTree() {
-  const { container } = useWebContainer();
+  const { container } = useWebContainerContext();
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['src']));
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -52,8 +52,7 @@ export default function FileTree() {
         if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-    } catch (err) {
-      console.error('Failed to read dir:', dirPath, err);
+    } catch {
       return [];
     }
   };
@@ -61,24 +60,14 @@ export default function FileTree() {
   useEffect(() => {
     if (!container) return;
 
-    const loadTree = async () => {
+    const load = async () => {
       const root = await readDirectory('/');
       setTree(root);
     };
+    load();
 
-    loadTree();
-
-    // Listen to file changes and refresh tree
-    const watcher = container.fs.watch('/', { recursive: true }, async (event, filename) => {
-      if (!filename) return;
-      console.log('FS Event:', event, filename);
-      const root = await readDirectory('/');
-      setTree(root);
-    });
-
-    return () => {
-      watcher?.close();
-    };
+    const watcher = container.fs.watch('/', { recursive: true }, () => load());
+    return () => watcher?.close();
   }, [container]);
 
   const handleFileClick = async (path: string) => {
@@ -86,12 +75,9 @@ export default function FileTree() {
     setSelectedPath(path);
     try {
       const content = await container.fs.readFile(path, 'utf-8');
-      // Emit event to open in editor
-      window.dispatchEvent(new CustomEvent('open-file', {
-        detail: { path, content }
-      }));
-    } catch (err) {
-      console.error('Failed to read file:', err);
+      window.dispatchEvent(new CustomEvent('open-file', { detail: { path, content } }));
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -107,25 +93,19 @@ export default function FileTree() {
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={(e) => {
             e.stopPropagation();
-            if (node.type === 'directory') {
-              toggleExpand(node.path);
-            } else {
-              handleFileClick(node.path);
-            }
+            if (node.type === 'directory') toggleExpand(node.path);
+            else handleFileClick(node.path);
           }}
         >
           {node.type === 'directory' ? (
-            hasChildren ? (
-              isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
-            ) : (
-              <Folder className="w-4 h-4 text-yellow-500" />
-            )
+            hasChildren ? (isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />)
+              : <Folder className="w-4 h-4 text-yellow-500" />
           ) : (
             <FileCode className="w-4 h-4 text-green-400" />
           )}
           <span className="truncate">{node.name}</span>
         </div>
-        {node.type === 'directory' && isExpanded && node.children?.map(child => renderNode(child, depth + 1))}
+        {node.type === 'directory' && isExpanded && node.children?.map(c => renderNode(c, depth + 1))}
       </div>
     );
   };
@@ -137,7 +117,7 @@ export default function FileTree() {
       </div>
       <div className="flex-1 overflow-y-auto py-2">
         {tree.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm mt-8">Loading files...</div>
+          <div className="text-center text-gray-500 text-sm mt-8">Loading…</div>
         ) : (
           tree.map(node => renderNode(node))
         )}

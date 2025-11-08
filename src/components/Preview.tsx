@@ -1,15 +1,15 @@
 // src/components/Preview.tsx
 import React, { useEffect, useState } from 'react';
-import { useWebContainer } from '../hooks/useWebContainer';
+import { useWebContainerContext } from '../context/WebContainerContext';
 
 export default function Preview() {
-  const { ready, logs, previewUrl } = useWebContainer();
+  const { ready, logs, previewUrl } = useWebContainerContext();
   const [iframeSrc, setIframeSrc] = useState('');
 
   useEffect(() => {
     const handler = (e: any) => setIframeSrc(e.detail.url);
-    window.addEventListener('webcontainer-ready', handler);
-    return () => window.removeEventListener('webcontainer-ready', handler);
+    window.addEventListener('wc-ready', handler);
+    return () => window.removeEventListener('wc-ready', handler);
   }, []);
 
   return (
@@ -23,11 +23,12 @@ export default function Preview() {
             src={iframeSrc}
             className="absolute inset-0 w-full h-full"
             sandbox="allow-scripts allow-same-origin allow-modals allow-forms"
+            title="Preview"
           />
         ) : (
           <div className="flex flex-col h-full">
             <div className="flex-1 flex items-center justify-center text-gray-500">
-              {ready ? 'Loading preview...' : 'Booting WebContainer...'}
+              {ready ? 'Loading preview…' : 'Booting WebContainer…'}
             </div>
             <pre className="text-xs p-3 bg-black overflow-auto h-32">
               {logs.join('')}
