@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AiCoderV2</title>
 
-    <!-- OFFICIAL WebContainer boot script (this is how bolt.new does it) -->
-    <script src="https://webcontainers.io/webcontainer.js" type="module"></script>
+    <!-- Proxied through Vite → ZERO CORS -->
+    <script src="/webcontainer.js" type="module" crossorigin></script>
 
-    <!-- Required headers for SharedArrayBuffer -->
     <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
     <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
   </head>

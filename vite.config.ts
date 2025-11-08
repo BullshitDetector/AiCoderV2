@@ -6,14 +6,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    strictPort: true,
     proxy: {
-      '/preview': {
-        target: 'http://localhost:3000', // WebContainer uses random port → we fix via message
-        ws: true,
+      // Bypass CORS for WebContainer script
+      '/webcontainer.js': {
+        target: 'https://webcontainers.io',
         changeOrigin: true,
         secure: false,
-      },
-    },
-  },
+        rewrite: (path) => path.replace(/^\/webcontainer.js/, '/webcontainer.js')
+      }
+    }
+  }
 });
