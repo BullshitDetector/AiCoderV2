@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AiCoderV2</title>
     
-    <!-- CRITICAL: Working WebContainer CDN (tested Nov 08 2025) -->
+    <!-- OFFICIAL WORKING CDN - Latest version 1.6.1 (Nov 08 2025) -->
     <script type="module">
-      import { WebContainer } from 'https://cdn.jsdelivr.net/npm/@webcontainer/api@1.2.0/dist/standalone.js';
+      import { WebContainer } from 'https://cdn.jsdelivr.net/npm/@webcontainer/api@1.6.1/dist/standalone.js';
       window.WebContainer = WebContainer;
     </script>
 
-    <!-- Allow everything WebContainer needs -->
+    <!-- Required for SharedArrayBuffer -->
     <meta http-equiv="Content-Security-Policy" 
           content="script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; 
                    worker-src 'self' blob:; 
@@ -20,7 +20,6 @@
   <body class="bg-gray-950">
     <div id="root"></div>
 
-    <!-- Initial project files for instant mount -->
     <template id="initial-files">
       <!DOCTYPE html>
       <html lang="en">
