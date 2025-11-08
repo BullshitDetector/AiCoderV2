@@ -1,57 +1,81 @@
-import React, { CSSProperties } from 'react';
-import Editor from '@monaco-editor/react';
-import { useWebContainerContext } from '../context/WebContainerContext';
+// src/components/MonacoEditor.tsx
+import React, { useEffect, useRef, useState } from 'react';
+import loader from '@monaco-editor/loader';
+import { useWebContainer } from '../hooks/useWebContainer';
 
-interface MonacoEditorProps {
-  className?: string;
-  style?: CSSProperties;
-}
+export default function MonacoEditor() {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const monacoRef = useRef<any>(null);
+  const editorInstanceRef = useRef<any>(null);
+  const [currentFile, setCurrentFile] = useState<string | null>(null);
+  const { container } = useWebContainer();
 
-const MonacoEditor: React.FC<MonacoEditorProps> = ({ className, style }) => {
-  const { wc, files, currentFile } = useWebContainerContext();
+  useEffect(() => {
+    if (!editorRef.current) return;
 
-  if (!currentFile) {
-    return <div className={`flex items-center justify-center h-full text-gray-400 ${className}`} style={style}>Select a file to edit</div>;
-  }
+    loader.init().then((monaco) => {
+      monacoRef.current = monaco;
 
-  const value = files[currentFile] || '';
+      editorInstanceRef.current = monaco.editor.create(editorRef.current, {
+        value: '// Select a file to start editing\n',
+        language: 'typescript',
+        theme: 'vs-dark',
+        automaticLayout: true,
+        minimap: { enabled: false },
+        fontSize: 14,
+        scrollBeyondLastLine: false,
+      });
 
-  const handleChange = async (newValue: string | undefined) => {
-    if (wc && currentFile) {
-      await wc.fs.writeFile(currentFile, newValue || '');
-      // fs-change will trigger files update in hook
-    }
-  };
+      // Auto-save on change
+      editorInstanceRef.current.onDidChangeModelContent(() => {
+        if (!currentFile || !container) return;
+        const value = editorInstanceRef.current.getValue();
+        container.fs.writeFile(currentFile, value).catch(console.error);
+      });
+    });
 
-  const language = getLanguageFromPath(currentFile);
+    return () => {
+      editorInstanceRef.current?.dispose();
+    };
+  }, [container]);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      const { path, content } = e.detail;
+      setCurrentFile(path);
+
+      const ext = path.split('.').pop();
+      const language = {
+        ts: 'typescript',
+        tsx: 'typescript',
+        js: 'javascript',
+        jsx: 'javascript',
+        json: 'json',
+        html: 'html',
+        css: 'css',
+      }[ext || ''] || 'plaintext';
+
+      if (editorInstanceRef.current) {
+        editorInstanceRef.current.setValue(content);
+        const model = editorInstanceRef.current.getModel();
+        if (model) {
+          monacoRef.current?.editor.setModelLanguage(model, language);
+        }
+      }
+    };
+
+    window.addEventListener('open-file', handler);
+    return () => window.removeEventListener('open-file', handler);
+  }, []);
 
   return (
-    <div className={className} style={style}>
-      <Editor
-        height="100%"
-        path={currentFile}
-        defaultLanguage={language}
-        theme="vs-dark"
-        value={value}
-        onChange={handleChange}
-        options={{
-          minimap: { enabled: true },
-          scrollBeyondLastLine: false,
-          fontSize: 14,
-          wordWrap: 'on',
-        }}
-      />
+    <div className="h-full bg-gray-900">
+      <div className="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center justify-between">
+        <span className="text-sm font-medium truncate max-w-xs">
+          {currentFile || 'No file selected'}
+        </span>
+      </div>
+      <div ref={editorRef} className="h-full" style={{ height: 'calc(100% - 43px)' }} />
     </div>
   );
-};
-
-function getLanguageFromPath(path: string): string {
-  if (path.endsWith('.tsx') || path.endsWith('.ts')) return 'typescript';
-  if (path.endsWith('.jsx') || path.endsWith('.js')) return 'javascript';
-  if (path.endsWith('.json')) return 'json';
-  if (path.endsWith('.html')) return 'html';
-  if (path.endsWith('.css')) return 'css';
-  return 'plaintext';
 }
-
-export default MonacoEditor;

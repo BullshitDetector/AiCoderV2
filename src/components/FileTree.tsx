@@ -1,126 +1,147 @@
-import React, { CSSProperties, useMemo } from 'react';
-import { useWebContainerContext } from '../context/WebContainerContext';
-import { Folder, FileText, ChevronDown, ChevronRight } from 'lucide-react';
-
-interface FileTreeProps {
-  className?: string;
-  style?: CSSProperties;
-}
+// src/components/FileTree.tsx
+import React, { useEffect, useState } from 'react';
+import { File, Folder, ChevronRight, ChevronDown, FileCode } from 'lucide-react';
+import { useWebContainer } from '../hooks/useWebContainer';
 
 interface TreeNode {
   name: string;
   path: string;
-  isDirectory: boolean;
+  type: 'file' | 'directory';
   children?: TreeNode[];
 }
 
-const FileTree: React.FC<FileTreeProps> = ({ className, style }) => {
-  const { files, setCurrentFile } = useWebContainerContext();
+export default function FileTree() {
+  const { container } = useWebContainer();
+  const [tree, setTree] = useState<TreeNode[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(['src']));
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
-  const tree = useMemo(() => buildTree(Object.keys(files)), [files]);
+  const toggleExpand = (path: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const readDirectory = async (dirPath: string): Promise<TreeNode[]> => {
+    if (!container) return [];
+    try {
+      const entries = await container.fs.readdir(dirPath, { withFileTypes: true });
+      const nodes: TreeNode[] = [];
+
+      for (const entry of entries) {
+        const fullPath = dirPath === '/' ? `/${entry.name}` : `${dirPath}/${entry.name}`;
+        if (entry.isDirectory()) {
+          nodes.push({
+            name: entry.name,
+            path: fullPath,
+            type: 'directory',
+            children: await readDirectory(fullPath),
+          });
+        } else {
+          nodes.push({
+            name: entry.name,
+            path: fullPath,
+            type: 'file',
+          });
+        }
+      }
+      return nodes.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+    } catch (err) {
+      console.error('Failed to read dir:', dirPath, err);
+      return [];
+    }
+  };
+
+  useEffect(() => {
+    if (!container) return;
+
+    const loadTree = async () => {
+      const root = await readDirectory('/');
+      setTree(root);
+    };
+
+    loadTree();
+
+    // Listen to file changes and refresh tree
+    const watcher = container.fs.watch('/', { recursive: true }, async (event, filename) => {
+      if (!filename) return;
+      console.log('FS Event:', event, filename);
+      const root = await readDirectory('/');
+      setTree(root);
+    });
+
+    return () => {
+      watcher?.close();
+    };
+  }, [container]);
+
+  const handleFileClick = async (path: string) => {
+    if (!container) return;
+    setSelectedPath(path);
+    try {
+      const content = await container.fs.readFile(path, 'utf-8');
+      // Emit event to open in editor
+      window.dispatchEvent(new CustomEvent('open-file', {
+        detail: { path, content }
+      }));
+    } catch (err) {
+      console.error('Failed to read file:', err);
+    }
+  };
+
+  const renderNode = (node: TreeNode, depth = 0) => {
+    const isExpanded = expanded.has(node.path);
+    const hasChildren = node.type === 'directory' && node.children && node.children.length > 0;
+
+    return (
+      <div key={node.path}>
+        <div
+          className={`flex items-center gap-1.5 px-2 py-1.5 hover:bg-gray-700 cursor-pointer rounded select-none text-sm
+            ${selectedPath === node.path ? 'bg-blue-600 text-white' : 'text-gray-300'}`}
+          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (node.type === 'directory') {
+              toggleExpand(node.path);
+            } else {
+              handleFileClick(node.path);
+            }
+          }}
+        >
+          {node.type === 'directory' ? (
+            hasChildren ? (
+              isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
+            ) : (
+              <Folder className="w-4 h-4 text-yellow-500" />
+            )
+          ) : (
+            <FileCode className="w-4 h-4 text-green-400" />
+          )}
+          <span className="truncate">{node.name}</span>
+        </div>
+        {node.type === 'directory' && isExpanded && node.children?.map(child => renderNode(child, depth + 1))}
+      </div>
+    );
+  };
 
   return (
-    <div className={`overflow-auto ${className}`} style={style}>
-      <div className="p-2">
-        <div className="flex items-center text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-          <Folder size={14} className="mr-1" />
-          Explorer
-        </div>
-        <ul className="space-y-0.5">
-          {tree.map((node) => (
-            <TreeNodeComponent key={node.path} node={node} setCurrentFile={setCurrentFile} />
-          ))}
-        </ul>
+    <div className="h-full bg-gray-900 text-gray-100 flex flex-col">
+      <div className="px-4 py-3 border-b border-gray-700">
+        <h3 className="font-semibold text-sm uppercase tracking-wider">Explorer</h3>
+      </div>
+      <div className="flex-1 overflow-y-auto py-2">
+        {tree.length === 0 ? (
+          <div className="text-center text-gray-500 text-sm mt-8">Loading files...</div>
+        ) : (
+          tree.map(node => renderNode(node))
+        )}
       </div>
     </div>
   );
-};
-
-const TreeNodeComponent: React.FC<{
-  node: TreeNode;
-  setCurrentFile: (file: string | null) => void;
-  depth?: number;
-}> = ({ node, setCurrentFile, depth = 0 }) => {
-  const [open, setOpen] = React.useState(depth < 2);
-
-  if (!node.isDirectory) {
-    return (
-      <li
-        className="flex items-center cursor-pointer hover:bg-gray-700 px-2 py-1 rounded text-sm"
-        style={{ paddingLeft: `${depth * 12 + 20}px` }}
-        onClick={() => setCurrentFile(node.path)}
-      >
-        <FileText size={14} className="mr-2 text-gray-400" />
-        <span className="text-gray-300">{node.name}</span>
-      </li>
-    );
-  }
-
-  return (
-    <li>
-      <div
-        className="flex items-center cursor-pointer hover:bg-gray-700 px-2 py-1 rounded text-sm"
-        style={{ paddingLeft: `${depth * 12 + 4}px` }}
-        onClick={() => setOpen(!open)}
-      >
-        {open ? (
-          <ChevronDown size={14} className="mr-1 text-gray-500" />
-        ) : (
-          <ChevronRight size={14} className="mr-1 text-gray-500" />
-        )}
-        <Folder size={14} className="mr-2 text-yellow-500" />
-        <span className="text-gray-300 font-medium">{node.name}</span>
-      </div>
-      {open && node.children && (
-        <ul className="space-y-0.5">
-          {node.children.map((child) => (
-            <TreeNodeComponent
-              key={child.path}
-              node={child}
-              setCurrentFile={setCurrentFile}
-              depth={depth + 1}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-};
-
-// Helper to build tree from file paths
-function buildTree(filePaths: string[]): TreeNode[] {
-  const root: TreeNode[] = [];
-  const sortedPaths = [...filePaths].sort();
-
-  for (const path of sortedPaths) {
-    const parts = path.split('/').filter((p) => p);
-    let currentLevel = root;
-    let currentPath = '';
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      currentPath += `/${part}`;
-      let node = currentLevel.find((n) => n.name === part);
-
-      const isDirectory = i < parts.length - 1;
-
-      if (!node) {
-        node = {
-          name: part,
-          path: currentPath,
-          isDirectory,
-          children: isDirectory ? [] : undefined,
-        };
-        currentLevel.push(node);
-      }
-
-      if (isDirectory && node.children) {
-        currentLevel = node.children;
-      }
-    }
-  }
-
-  return root;
 }
-
-export default FileTree;
